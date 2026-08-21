@@ -638,7 +638,7 @@ func TestSessionJavaScriptResumesIdleSuspension(t *testing.T) {
 	for _, expected := range []string{
 		"selectSession(session, true)",
 		"if (resumeIdle && session.idleSuspended) resumeIdleSession(session);",
-		"await requestSessionResume(session);",
+		"await requestSessionLifecycleAction(session, 'resume');",
 	} {
 		if !strings.Contains(javascript, expected) {
 			t.Errorf("Session JavaScript is missing idle resume behavior %q", expected)
@@ -646,13 +646,19 @@ func TestSessionJavaScriptResumesIdleSuspension(t *testing.T) {
 	}
 }
 
-func TestSessionPageOffersUserSuspensionResume(t *testing.T) {
+func TestSessionPageOffersUserSuspensionControls(t *testing.T) {
 	index, err := webFiles.ReadFile("web/index.html")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if expected := `id="resume-session" aria-label="Resume session"`; !strings.Contains(string(index), expected) {
-		t.Errorf("Session page is missing resume control %q", expected)
+	for _, expected := range []string{
+		`id="suspend-session" aria-label="Suspend session"`,
+		`id="resume-session" aria-label="Resume session"`,
+		`id="session-action-lifecycle" type="button" role="menuitem"`,
+	} {
+		if !strings.Contains(string(index), expected) {
+			t.Errorf("Session page is missing suspension control %q", expected)
+		}
 	}
 
 	source, err := webFiles.ReadFile("web/app.js")
@@ -660,11 +666,16 @@ func TestSessionPageOffersUserSuspensionResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
+		"return session?.userSuspended || session?.idleSuspended ? 'resume' : 'suspend';",
+		"elements.sessionActionLifecycle.textContent = action === 'resume' ? 'Resume' : 'Suspend';",
+		"elements.sessionActionLifecycle.addEventListener('click', event => {",
+		"elements.suspendButton.hidden = !session || session.userSuspended;",
+		"elements.suspendButton.addEventListener('click', suspendSelectedSession);",
 		"elements.resumeButton.hidden = !session?.userSuspended;",
 		"elements.resumeButton.addEventListener('click', resumeSelectedSession);",
 	} {
 		if !strings.Contains(string(source), expected) {
-			t.Errorf("Session JavaScript is missing user suspension resume behavior %q", expected)
+			t.Errorf("Session JavaScript is missing user suspension behavior %q", expected)
 		}
 	}
 }
@@ -866,7 +877,7 @@ func TestApplicationDisplayNameBehavior(t *testing.T) {
 	}
 }
 
-func TestApplicationSessionResumeBehavior(t *testing.T) {
+func TestApplicationSessionSuspensionBehavior(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("Node.js is not installed")
@@ -1362,7 +1373,7 @@ func TestSessionUIAdaptsToPhoneViewport(t *testing.T) {
 		"phone create touch target":    `.new-session-button { min-height: 44px; padding: 6px 10px; }`,
 		"section reorder touch target": `.session-section-order-button { width: 44px; height: 44px; }`,
 		"two-row phone header":         `grid-template-areas: "menu heading reset delete" "tabs tabs connection connection"`,
-		"phone header resume slot":     `.conversation-header:has(#resume-session:not([hidden])) { grid-template-areas: "menu heading resume reset delete"`,
+		"phone lifecycle action slot":  `.conversation-header:has(.session-lifecycle-action:not([hidden])) { grid-template-areas: "menu heading lifecycle reset delete"`,
 		"48-pixel touch targets":       `.icon-button { width: 48px; height: 48px; }`,
 		"Session action touch target":  `.session-item-actions { top: 5px; right: 1px; width: 44px; height: 44px; }`,
 		"phone safe-area padding":      `env(safe-area-inset-bottom)`,
@@ -1567,6 +1578,66 @@ func TestSessionDisplayNameAPI(t *testing.T) {
 	}
 	if _, exists := updated.Annotations[sessionDisplayNameAnnotation]; exists || updated.Annotations["owner"] != "platform" {
 		t.Fatalf("Session annotations after clearing display name = %v", updated.Annotations)
+	}
+}
+
+func TestSessionSuspendAPISuspendsSession(t *testing.T) {
+	server := testServer(t)
+	session := &kelos.Session{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "chat",
+			Namespace:   "team-a",
+			Annotations: map[string]string{"owner": "platform"},
+		},
+		Spec: kelos.SessionSpec{Worker: kelos.WorkerSpec{
+			Type:        "codex",
+			Model:       "gpt-5",
+			Credentials: &kelos.Credentials{Type: kelos.CredentialTypeNone},
+		}},
+		Status: kelos.SessionStatus{Phase: kelos.SessionPhaseReady},
+	}
+	if err := server.client.Create(t.Context(), session); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/sessions/team-a/chat/suspend", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("suspend status = %d body = %s", response.Code, response.Body.String())
+	}
+	var summary sessionSummary
+	if err := json.Unmarshal(response.Body.Bytes(), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if !summary.UserSuspended {
+		t.Fatal("suspend response userSuspended = false, want true")
+	}
+
+	var updated kelos.Session
+	if err := server.client.Get(t.Context(), client.ObjectKeyFromObject(session), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Spec.Suspend == nil || !*updated.Spec.Suspend {
+		t.Fatalf("suspended Session suspend = %v, want true", updated.Spec.Suspend)
+	}
+	if updated.Spec.Worker.Model != "gpt-5" || updated.Annotations["owner"] != "platform" {
+		t.Fatalf("suspended Session lost unrelated fields: %#v", updated)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/sessions/team-a/chat/suspend", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	response = httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("repeated suspend status = %d body = %s", response.Code, response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if !summary.UserSuspended {
+		t.Fatal("repeated suspend response userSuspended = false, want true")
 	}
 }
 
