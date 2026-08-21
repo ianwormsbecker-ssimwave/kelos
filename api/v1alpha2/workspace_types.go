@@ -43,8 +43,10 @@ type WorkspaceSpec struct {
 	// +optional
 	Ref string `json:"ref,omitempty"`
 
-	// SecretRef references a Secret containing a GITHUB_TOKEN key for git
-	// authentication and GitHub CLI (gh) operations.
+	// SecretRef references a Secret containing the git authentication token.
+	// For GitHub repositories the Secret holds a GITHUB_TOKEN key (or GitHub
+	// App credentials) used for git and GitHub CLI (gh) operations. For
+	// GitLab.com repositories the Secret holds a GITLAB_TOKEN key.
 	// +optional
 	SecretRef *SecretReference `json:"secretRef,omitempty"`
 

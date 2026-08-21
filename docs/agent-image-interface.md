@@ -79,11 +79,13 @@ Kelos sets the following reserved environment variables on agent containers:
 | `OPENCODE_API_KEY` | API key for OpenCode (`opencode` agent, api-key or oauth credential type). The OpenCode entrypoint maps this for supported provider prefixes, including `ZHIPU_API_KEY` for `zai/*` models. | When agent type is `opencode` |
 | `CURSOR_API_KEY` | API key for Cursor CLI (`cursor` agent, api-key or oauth credential type) | When agent type is `cursor` |
 | `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token (`claude-code` agent, oauth credential type) | When credential type is `oauth` and agent type is `claude-code` |
-| `GITHUB_TOKEN` | GitHub token for workspace access. **Captured at pod start and not refreshed in-process — custom images should read `KELOS_GITHUB_TOKEN_FILE` instead (see [GitHub token freshness](#github-token-freshness)).** | When workspace has a `secretRef` |
+| `GITHUB_TOKEN` | GitHub token for workspace access. **Captured at pod start and not refreshed in-process — custom images should read `KELOS_GITHUB_TOKEN_FILE` instead (see [GitHub token freshness](#github-token-freshness)).** | When workspace has a `secretRef` (for GitLab.com workspaces, only when the Secret has a `GITHUB_TOKEN` key) |
 | `GH_TOKEN` | GitHub token for `gh` CLI (github.com). Same freshness caveat as `GITHUB_TOKEN`; the bundled `gh` wrapper in reference images overrides it from the token file on each call. | When workspace has a `secretRef` and repo is on github.com |
 | `GH_ENTERPRISE_TOKEN` | GitHub token for `gh` CLI (GitHub Enterprise). Same freshness caveat as `GH_TOKEN`. | When workspace has a `secretRef` and repo is on a GitHub Enterprise host |
 | `GH_HOST` | Hostname for GitHub Enterprise | When repo is on a GitHub Enterprise host |
-| `KELOS_GITHUB_TOKEN_FILE` | Path to a file containing the current GitHub token. The file is kubelet-synced from the underlying Secret, so re-reading it on each GitHub call picks up refreshed installation tokens without a pod restart. **Recommended source of truth for custom agent images.** | When workspace has a `secretRef` |
+| `KELOS_GITHUB_TOKEN_FILE` | Path to a file containing the current GitHub token. The file is kubelet-synced from the underlying Secret, so re-reading it on each GitHub call picks up refreshed installation tokens without a pod restart. **Recommended source of truth for custom agent images.** | When workspace has a `secretRef` and repo is not on GitLab.com |
+| `GITLAB_TOKEN` | GitLab token for workspace access. Captured at pod start; custom images should read `KELOS_GITLAB_TOKEN_FILE` to pick up Secret rotations. | When workspace has a `secretRef`, repo is on GitLab.com, and the Secret has a `GITLAB_TOKEN` key |
+| `KELOS_GITLAB_TOKEN_FILE` | Path to a file containing the current GitLab token, kubelet-synced from the underlying Secret. | When workspace has a `secretRef` and repo is on GitLab.com |
 | `KELOS_AGENT_TYPE` | The agent type (`claude-code`, `codex`, `gemini`, `opencode`, `cursor`) | Always |
 | `KELOS_TASK_NAME` | The name of the Task being run, so an image can correlate its run with the Task that launched it (progress streaming, steering, cancellation against an external control plane). Set by the worker-runner on each Task a pooled worker executes. The worker pod is long-lived and serves many Tasks, so read this at agent start rather than caching it per pod. Job-backed Tasks can supply the same information themselves through `podOverrides.env`, which pooled Tasks cannot use. | Worker pool Tasks |
 | `KELOS_BASE_BRANCH` | The base branch (workspace `ref`) for the task | When workspace has a non-empty `ref` |
@@ -197,6 +199,12 @@ Two concrete recommendations:
 `git` is handled automatically: the credential helper Kelos injects
 already reads the file on each invocation, with the `$GITHUB_TOKEN` env
 var as a fallback for images that have not adopted the file.
+
+For GitLab.com workspaces there is no controller-side token re-minting —
+the token is whatever the workspace Secret holds — but Secret rotations
+still propagate to `$KELOS_GITLAB_TOKEN_FILE` via the kubelet sync. The
+injected git credential helper reads that file on each invocation, falling
+back to `$GITLAB_TOKEN` (then `$GITHUB_TOKEN`) when the file is absent.
 
 ## Output Capture
 

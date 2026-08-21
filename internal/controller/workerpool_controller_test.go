@@ -296,6 +296,74 @@ func TestWorkerPoolReconciler_ExistingWorkspaceRefreshesCredentialConfig(t *test
 	}
 }
 
+func TestWorkerPoolReconciler_GitLabWorkspaceUsesGitLabToken(t *testing.T) {
+	scheme := newWorkerPoolTestScheme()
+	pool := newTestWorkerPool("my-pool", "default", 1)
+	ws := newTestWorkspace("default")
+	ws.Spec.Repo = "https://gitlab.com/my-group/my-repo.git"
+	ws.Spec.SecretRef = &kelos.SecretReference{Name: "gitlab-token"}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "gitlab-token", Namespace: "default"},
+		StringData: map[string]string{GitLabTokenSecretKey: "glpat-test"},
+	}
+
+	cl := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kelos.WorkerPool{}).
+		WithObjects(pool, ws, secret).
+		Build()
+	r := newWorkerPoolReconciler(cl, scheme)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "my-pool", Namespace: "default"},
+	})
+	require.NoError(t, err)
+
+	var sts appsv1.StatefulSet
+	require.NoError(t, cl.Get(context.Background(), types.NamespacedName{
+		Name: "wp-my-pool", Namespace: "default",
+	}, &sts))
+
+	main := sts.Spec.Template.Spec.Containers[0]
+	envByName := map[string]corev1.EnvVar{}
+	for _, env := range main.Env {
+		envByName[env.Name] = env
+	}
+	gitlabToken, ok := envByName["GITLAB_TOKEN"]
+	require.True(t, ok, "Expected GITLAB_TOKEN env for GitLab workspace")
+	require.NotNil(t, gitlabToken.ValueFrom)
+	assert.Equal(t, GitLabTokenSecretKey, gitlabToken.ValueFrom.SecretKeyRef.Key)
+	assert.Equal(t, GitLabTokenMountPath+"/"+GitLabTokenSecretKey, envByName["KELOS_GITLAB_TOKEN_FILE"].Value)
+	for _, name := range []string{"GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR", "KELOS_GITHUB_TOKEN_FILE"} {
+		_, ok := envByName[name]
+		assert.False(t, ok, "%s should not be set for GitLab workspace", name)
+	}
+
+	var tokenVolume *corev1.Volume
+	for i := range sts.Spec.Template.Spec.Volumes {
+		if sts.Spec.Template.Spec.Volumes[i].Name == GitLabTokenVolumeName {
+			tokenVolume = &sts.Spec.Template.Spec.Volumes[i]
+			break
+		}
+	}
+	require.NotNil(t, tokenVolume, "Expected volume %q for GitLab workspace", GitLabTokenVolumeName)
+	assert.Equal(t, "gitlab-token", tokenVolume.Secret.SecretName)
+	require.Len(t, tokenVolume.Secret.Items, 1)
+	assert.Equal(t, GitLabTokenSecretKey, tokenVolume.Secret.Items[0].Key)
+
+	var script string
+	for _, container := range sts.Spec.Template.Spec.InitContainers {
+		if container.Name == "git-clone" {
+			require.Len(t, container.Command, 3)
+			script = container.Command[2]
+			break
+		}
+	}
+	require.NotEmpty(t, script)
+	assert.Contains(t, script, "credential.username="+gitlabCredentialUsername)
+	assert.Contains(t, script, GitLabTokenMountPath+"/"+GitLabTokenSecretKey)
+}
+
 func TestWorkerPoolReconciler_RejectsExtraContainerInitContainerNameCollision(t *testing.T) {
 	scheme := newWorkerPoolTestScheme()
 	pool := newTestWorkerPool("my-pool", "default", 1)

@@ -426,18 +426,22 @@ func killProcessesExcept(procRoot string, self int, kill func(pid int, sig sysca
 func taskAgentEnv(base []string, task *kelos.Task) []string {
 	env := append([]string{}, base...)
 
-	// Refresh the GitHub token env vars from the mounted token file so
-	// env-reading tools pick up controller-side token refreshes. The token
-	// env vars in os.Environ() are captured at pod start and never update,
-	// so for long-lived worker pods they go stale once the installation token
-	// is re-minted. The git credential helper already re-reads the file per
-	// git call; this covers tools that read GITHUB_TOKEN/GH_TOKEN directly.
+	// Refresh the git host token env vars from the mounted token file so
+	// env-reading tools pick up controller-side token refreshes and Secret
+	// rotations. The token env vars in os.Environ() are captured at pod start
+	// and never update, so for long-lived worker pods they go stale once the
+	// token is re-minted. The git credential helper already re-reads the file
+	// per git call; this covers tools that read the token env vars directly.
 	// Only env vars already present are overridden, matching whichever the
-	// pod set (GH_TOKEN for github.com, GH_ENTERPRISE_TOKEN for GHE).
-	if token := currentGitHubToken(); token != "" {
+	// pod set (GH_TOKEN for github.com, GH_ENTERPRISE_TOKEN for GHE,
+	// GITLAB_TOKEN for GitLab.com).
+	if token := currentTokenFromFileEnv("KELOS_GITHUB_TOKEN_FILE"); token != "" {
 		env = overrideEnvIfPresent(env, "GITHUB_TOKEN", token)
 		env = overrideEnvIfPresent(env, "GH_TOKEN", token)
 		env = overrideEnvIfPresent(env, "GH_ENTERPRISE_TOKEN", token)
+	}
+	if token := currentTokenFromFileEnv("KELOS_GITLAB_TOKEN_FILE"); token != "" {
+		env = overrideEnvIfPresent(env, "GITLAB_TOKEN", token)
 	}
 
 	// Agent images that talk back to an external control plane (progress
@@ -462,12 +466,12 @@ func taskAgentEnv(base []string, task *kelos.Task) []string {
 	return env
 }
 
-// currentGitHubToken reads the current GitHub token from the file named by
-// KELOS_GITHUB_TOKEN_FILE, returning "" when the env var is unset or the file
+// currentTokenFromFileEnv reads the current git host token from the file named
+// by the given env var, returning "" when the env var is unset or the file
 // is missing/unreadable/empty. The file is a kubelet-synced secret volume, so
 // it reflects controller-side token refreshes within the kubelet sync period.
-func currentGitHubToken() string {
-	tokenFile := os.Getenv("KELOS_GITHUB_TOKEN_FILE")
+func currentTokenFromFileEnv(fileEnvVar string) string {
+	tokenFile := os.Getenv(fileEnvVar)
 	if tokenFile == "" {
 		return ""
 	}
