@@ -53,12 +53,14 @@ func WorkItemToTemplateVars(item WorkItem) map[string]interface{} {
 }
 
 // RenderTemplate renders a Go text/template string with the given work item's fields.
-// This function is used by polling-based TaskSpawners (githubIssues, githubPullRequests, jira, cron).
+// This function is used by polling-based TaskSpawners (githubIssues, githubPullRequests,
+// gitlabIssues, gitlabMergeRequests, jira, cron).
 // Webhook-based TaskSpawners use a different template rendering path with additional variables.
 //
 // Available variables (all sources): {{.ID}}, {{.Title}}, {{.Kind}}
 // GitHub issue/Jira sources: {{.Number}}, {{.Body}}, {{.URL}}, {{.Labels}}, {{.Comments}}
 // GitHub pull request sources additionally expose: {{.Branch}}, {{.ReviewState}}, {{.ReviewComments}}
+// GitLab issue and merge request sources: {{.Number}}, {{.Body}}, {{.URL}}, {{.Labels}}, {{.Comments}}; merge requests additionally expose {{.Branch}}
 // Cron sources: {{.Time}}, {{.Schedule}}
 func RenderTemplate(tmplStr string, item WorkItem) (string, error) {
 	tmpl, err := template.New("tmpl").Parse(tmplStr)

@@ -38,7 +38,7 @@ Claude Code, OpenAI Codex, Google Gemini, OpenCode, Cursor, and
 - Run agents in isolated Kubernetes workloads instead of on developer laptops.
 - Reuse the same repositories, instructions, skills, and tools across agents.
 - Keep interactive Sessions alive and reconnect from terminal or web clients.
-- Trigger work from GitHub, Jira, Linear, cron schedules, or generic webhooks.
+- Trigger work from GitHub, GitLab, Jira, Linear, cron schedules, or generic webhooks.
 - Observe, limit, and operate agent workloads with familiar Kubernetes controls.
 
 ## How It Works

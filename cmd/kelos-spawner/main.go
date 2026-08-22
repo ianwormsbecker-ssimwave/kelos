@@ -51,6 +51,8 @@ func main() {
 	var githubAppID string
 	var githubAppInstallationID string
 	var githubAppPrivateKey string
+	var gitlabProject string
+	var gitlabAPIBaseURL string
 	var jiraBaseURL string
 	var jiraProject string
 	var jiraJQL string
@@ -66,6 +68,8 @@ func main() {
 	flag.StringVar(&githubAppID, "github-app-id", "", "GitHub App ID for installation token generation (env: GITHUB_APP_ID)")
 	flag.StringVar(&githubAppInstallationID, "github-app-installation-id", "", "GitHub App installation ID (env: GITHUB_APP_INSTALLATION_ID)")
 	flag.StringVar(&githubAppPrivateKey, "github-app-private-key", "", "GitHub App private key in PEM format (env: GITHUB_APP_PRIVATE_KEY)")
+	flag.StringVar(&gitlabProject, "gitlab-project", "", "GitLab project path (e.g. group/subgroup/project)")
+	flag.StringVar(&gitlabAPIBaseURL, "gitlab-api-base-url", "", "GitLab API base URL (defaults to https://gitlab.com/api/v4)")
 	flag.StringVar(&jiraBaseURL, "jira-base-url", "", "Jira instance base URL (e.g. https://mycompany.atlassian.net)")
 	flag.StringVar(&jiraProject, "jira-project", "", "Jira project key")
 	flag.StringVar(&jiraJQL, "jira-jql", "", "Optional JQL filter for Jira issues")
@@ -95,6 +99,12 @@ func main() {
 	}
 	if githubAppPrivateKey == "" {
 		githubAppPrivateKey = os.Getenv("GITHUB_APP_PRIVATE_KEY")
+	}
+	// GitLab workspace secrets store the token under GITLAB_TOKEN; secrets
+	// that predate GitLab support store it under GITHUB_TOKEN.
+	gitlabToken := os.Getenv("GITLAB_TOKEN")
+	if gitlabToken == "" {
+		gitlabToken = os.Getenv("GITHUB_TOKEN")
 	}
 
 	if name == "" || namespace == "" {
@@ -134,6 +144,9 @@ func main() {
 		GitHubAppID:      reportingGitHubAppID,
 		GHProxyURL:       ghProxyURL,
 		TokenResolver:    tokenResolver,
+		GitLabProject:    gitlabProject,
+		GitLabAPIBaseURL: gitlabAPIBaseURL,
+		GitLabToken:      gitlabToken,
 		JiraBaseURL:      jiraBaseURL,
 		JiraProject:      jiraProject,
 		JiraJQL:          jiraJQL,
@@ -205,12 +218,21 @@ func taskNameForWorkItem(taskSpawnerName, workItemID string) string {
 }
 
 func runCycle(ctx context.Context, cl client.Client, key types.NamespacedName, githubOwner, githubRepo, githubAPIBaseURL string, tokenResolver func(context.Context) (string, error), jiraBaseURL, jiraProject, jiraJQL string, httpClient *http.Client) error {
-	return runCycleWithProxy(ctx, cl, key, githubOwner, githubRepo, "", githubAPIBaseURL, tokenResolver, jiraBaseURL, jiraProject, jiraJQL, httpClient)
+	return runCycleWithProxy(ctx, cl, key, spawnerRuntimeConfig{
+		GitHubOwner:      githubOwner,
+		GitHubRepo:       githubRepo,
+		GitHubAPIBaseURL: githubAPIBaseURL,
+		TokenResolver:    tokenResolver,
+		JiraBaseURL:      jiraBaseURL,
+		JiraProject:      jiraProject,
+		JiraJQL:          jiraJQL,
+		HTTPClient:       httpClient,
+	})
 }
 
-func runCycleWithProxy(ctx context.Context, cl client.Client, key types.NamespacedName, githubOwner, githubRepo, ghProxyURL, githubAPIBaseURL string, tokenResolver func(context.Context) (string, error), jiraBaseURL, jiraProject, jiraJQL string, httpClient *http.Client) error {
+func runCycleWithProxy(ctx context.Context, cl client.Client, key types.NamespacedName, cfg spawnerRuntimeConfig) error {
 	start := time.Now()
-	err := runCycleCore(ctx, cl, key, githubOwner, githubRepo, ghProxyURL, githubAPIBaseURL, tokenResolver, jiraBaseURL, jiraProject, jiraJQL, httpClient)
+	err := runCycleCore(ctx, cl, key, cfg)
 	discoveryDurationSeconds.Observe(time.Since(start).Seconds())
 	if err != nil {
 		discoveryErrorsTotal.Inc()
@@ -218,13 +240,13 @@ func runCycleWithProxy(ctx context.Context, cl client.Client, key types.Namespac
 	return err
 }
 
-func runCycleCore(ctx context.Context, cl client.Client, key types.NamespacedName, githubOwner, githubRepo, ghProxyURL, githubAPIBaseURL string, tokenResolver func(context.Context) (string, error), jiraBaseURL, jiraProject, jiraJQL string, httpClient *http.Client) error {
+func runCycleCore(ctx context.Context, cl client.Client, key types.NamespacedName, cfg spawnerRuntimeConfig) error {
 	var ts kelos.TaskSpawner
 	if err := cl.Get(ctx, key, &ts); err != nil {
 		return fmt.Errorf("fetching TaskSpawner: %w", err)
 	}
 
-	src, err := buildSourceWithProxy(ctx, &ts, githubOwner, githubRepo, ghProxyURL, githubAPIBaseURL, tokenResolver, jiraBaseURL, jiraProject, jiraJQL, httpClient)
+	src, err := buildSourceFromConfig(ctx, &ts, cfg)
 	if err != nil {
 		return fmt.Errorf("building source: %w", err)
 	}
@@ -613,10 +635,21 @@ func recordCycleFailure(ctx context.Context, cl client.Client, key types.Namespa
 	return cycleErr
 }
 
-// sourceAnnotations returns annotations that stamp GitHub source metadata
-// onto a spawned Task. These annotations enable downstream consumers (such
-// as the reporting watcher) to identify the originating issue or PR.
+// sourceAnnotations returns annotations that stamp source metadata onto a
+// spawned Task. These annotations enable downstream consumers (such as the
+// reporting watcher) to identify the originating issue, PR, or MR.
 func sourceAnnotations(ts *kelos.TaskSpawner, item source.WorkItem) map[string]string {
+	if ts.Spec.When.GitLabIssues != nil || ts.Spec.When.GitLabMergeRequests != nil {
+		kind := "issue"
+		if item.Kind == "MR" {
+			kind = "merge-request"
+		}
+		return map[string]string{
+			reporting.AnnotationSourceKind:   kind,
+			reporting.AnnotationSourceNumber: strconv.Itoa(item.Number),
+		}
+	}
+
 	if ts.Spec.When.GitHubIssues == nil && ts.Spec.When.GitHubPullRequests == nil {
 		return nil
 	}
@@ -733,10 +766,26 @@ func resolveGitHubCommentPolicy(policy *kelos.GitHubCommentPolicy) resolvedGitHu
 }
 
 func buildSource(ctx context.Context, ts *kelos.TaskSpawner, owner, repo, apiBaseURL string, tokenResolver func(context.Context) (string, error), jiraBaseURL, jiraProject, jiraJQL string, httpClient *http.Client) (source.Source, error) {
-	return buildSourceWithProxy(ctx, ts, owner, repo, "", apiBaseURL, tokenResolver, jiraBaseURL, jiraProject, jiraJQL, httpClient)
+	return buildSourceFromConfig(ctx, ts, spawnerRuntimeConfig{
+		GitHubOwner:      owner,
+		GitHubRepo:       repo,
+		GitHubAPIBaseURL: apiBaseURL,
+		TokenResolver:    tokenResolver,
+		JiraBaseURL:      jiraBaseURL,
+		JiraProject:      jiraProject,
+		JiraJQL:          jiraJQL,
+		HTTPClient:       httpClient,
+	})
 }
 
-func buildSourceWithProxy(ctx context.Context, ts *kelos.TaskSpawner, owner, repo, ghProxyURL, apiBaseURL string, tokenResolver func(context.Context) (string, error), jiraBaseURL, jiraProject, jiraJQL string, httpClient *http.Client) (source.Source, error) {
+func buildSourceFromConfig(ctx context.Context, ts *kelos.TaskSpawner, cfg spawnerRuntimeConfig) (source.Source, error) {
+	owner := cfg.GitHubOwner
+	repo := cfg.GitHubRepo
+	ghProxyURL := cfg.GHProxyURL
+	apiBaseURL := cfg.GitHubAPIBaseURL
+	tokenResolver := cfg.TokenResolver
+	httpClient := cfg.HTTPClient
+
 	if ts.Spec.When.GitHubIssues != nil {
 		gh := ts.Spec.When.GitHubIssues
 		commentPolicy := resolveGitHubCommentPolicy(gh.CommentPolicy)
@@ -815,14 +864,43 @@ func buildSourceWithProxy(ctx context.Context, ts *kelos.TaskSpawner, owner, rep
 		return src, nil
 	}
 
+	if ts.Spec.When.GitLabIssues != nil {
+		gl := ts.Spec.When.GitLabIssues
+		return &source.GitLabIssueSource{
+			Project:        cfg.GitLabProject,
+			Labels:         gl.Labels,
+			ExcludeLabels:  gl.ExcludeLabels,
+			State:          gl.State,
+			Author:         gl.Author,
+			ExcludeAuthors: gl.ExcludeAuthors,
+			Token:          cfg.GitLabToken,
+			BaseURL:        cfg.GitLabAPIBaseURL,
+		}, nil
+	}
+
+	if ts.Spec.When.GitLabMergeRequests != nil {
+		gl := ts.Spec.When.GitLabMergeRequests
+		return &source.GitLabMergeRequestSource{
+			Project:        cfg.GitLabProject,
+			Labels:         gl.Labels,
+			ExcludeLabels:  gl.ExcludeLabels,
+			State:          gl.State,
+			Author:         gl.Author,
+			ExcludeAuthors: gl.ExcludeAuthors,
+			Draft:          gl.Draft,
+			Token:          cfg.GitLabToken,
+			BaseURL:        cfg.GitLabAPIBaseURL,
+		}, nil
+	}
+
 	if ts.Spec.When.Jira != nil {
 		user := os.Getenv("JIRA_USER")
 		token := os.Getenv("JIRA_TOKEN")
 
 		return &source.JiraSource{
-			BaseURL: jiraBaseURL,
-			Project: jiraProject,
-			JQL:     jiraJQL,
+			BaseURL: cfg.JiraBaseURL,
+			Project: cfg.JiraProject,
+			JQL:     cfg.JiraJQL,
 			User:    user,
 			Token:   token,
 		}, nil
@@ -877,6 +955,12 @@ func priorityLabelsForTaskSpawner(ts *kelos.TaskSpawner) []string {
 	}
 	if ts.Spec.When.GitHubPullRequests != nil {
 		return ts.Spec.When.GitHubPullRequests.PriorityLabels
+	}
+	if ts.Spec.When.GitLabIssues != nil {
+		return ts.Spec.When.GitLabIssues.PriorityLabels
+	}
+	if ts.Spec.When.GitLabMergeRequests != nil {
+		return ts.Spec.When.GitLabMergeRequests.PriorityLabels
 	}
 	return nil
 }

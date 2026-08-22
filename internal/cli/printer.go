@@ -215,6 +215,10 @@ func printTaskSpawnerTable(w io.Writer, spawners []kelos.TaskSpawner, allNamespa
 			source = "GitHub Issues"
 		} else if s.Spec.When.GitHubPullRequests != nil {
 			source = "GitHub Pull Requests"
+		} else if s.Spec.When.GitLabIssues != nil {
+			source = "GitLab Issues"
+		} else if s.Spec.When.GitLabMergeRequests != nil {
+			source = "GitLab Merge Requests"
 		} else if s.Spec.When.Jira != nil {
 			source = s.Spec.When.Jira.Project
 		} else if s.Spec.When.Cron != nil {
@@ -289,6 +293,24 @@ func printTaskSpawnerDetail(w io.Writer, ts *kelos.TaskSpawner) {
 		}
 		if gh.ReviewState != "" {
 			printField(w, "Review State", gh.ReviewState)
+		}
+	} else if ts.Spec.When.GitLabIssues != nil {
+		gl := ts.Spec.When.GitLabIssues
+		printField(w, "Source", "GitLab Issues")
+		if gl.State != "" {
+			printField(w, "State", gl.State)
+		}
+		if len(gl.Labels) > 0 {
+			printField(w, "Labels", fmt.Sprintf("%v", gl.Labels))
+		}
+	} else if ts.Spec.When.GitLabMergeRequests != nil {
+		gl := ts.Spec.When.GitLabMergeRequests
+		printField(w, "Source", "GitLab Merge Requests")
+		if gl.State != "" {
+			printField(w, "State", gl.State)
+		}
+		if len(gl.Labels) > 0 {
+			printField(w, "Labels", fmt.Sprintf("%v", gl.Labels))
 		}
 	} else if ts.Spec.When.Jira != nil {
 		jira := ts.Spec.When.Jira

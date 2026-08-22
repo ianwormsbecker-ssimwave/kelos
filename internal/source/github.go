@@ -370,36 +370,11 @@ func (s *GitHubSource) fetchCommentsPage(ctx context.Context, pageURL string) ([
 // dropped from the front so that the most recent (and most relevant) comments
 // are preserved.
 func concatCommentBodies(comments []githubComment) string {
-	totalBytes := 0
-	for _, c := range comments {
-		totalBytes += len(c.Body)
+	bodies := make([]string, len(comments))
+	for i, c := range comments {
+		bodies[i] = c.Body
 	}
-
-	// If within budget, return all comments.
-	if totalBytes <= maxCommentBytes {
-		parts := make([]string, len(comments))
-		for i, c := range comments {
-			parts[i] = c.Body
-		}
-		return strings.Join(parts, "\n---\n")
-	}
-
-	// Truncate from the front: keep the most recent comments.
-	var parts []string
-	remaining := maxCommentBytes
-	for i := len(comments) - 1; i >= 0; i-- {
-		if remaining-len(comments[i].Body) < 0 {
-			break
-		}
-		remaining -= len(comments[i].Body)
-		parts = append(parts, comments[i].Body)
-	}
-
-	// Reverse so comments are back in chronological order.
-	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
-		parts[i], parts[j] = parts[j], parts[i]
-	}
-	return strings.Join(parts, "\n---\n")
+	return concatBodies(bodies)
 }
 
 var linkNextRe = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)

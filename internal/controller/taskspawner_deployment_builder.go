@@ -11,8 +11,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	kelos "github.com/kelos-dev/kelos/api/v1alpha2"
+	"github.com/kelos-dev/kelos/internal/gitprovider"
 )
 
 const (
@@ -59,7 +61,32 @@ func (b *DeploymentBuilder) buildPodParts(ts *kelos.TaskSpawner, workspace *kelo
 
 	var envVars []corev1.EnvVar
 
-	if workspace != nil {
+	if workspace != nil && taskSpawnerUsesGitLabSource(ts) {
+		project := gitlabSourceRepoOverride(ts)
+		if project == "" {
+			project = workspace.Repo
+		}
+		args = append(args, "--gitlab-project="+gitprovider.ProjectPath(project))
+		if workspace.SecretRef != nil {
+			// GITLAB_TOKEN is the GitLab workspace Secret key; GITHUB_TOKEN
+			// covers secrets that predate GitLab support. Both are optional
+			// so a Secret holding either one starts the pod.
+			for _, key := range []string{"GITLAB_TOKEN", "GITHUB_TOKEN"} {
+				envVars = append(envVars, corev1.EnvVar{
+					Name: key,
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: workspace.SecretRef.Name,
+							},
+							Key:      key,
+							Optional: ptr.To(true),
+						},
+					},
+				})
+			}
+		}
+	} else if workspace != nil {
 		host, owner, repo := parseGitHubRepo(workspace.Repo)
 
 		// Override with an explicit GitHub source repo if set (fork workflow).
@@ -355,6 +382,20 @@ func githubSourceRepoOverride(ts *kelos.TaskSpawner) string {
 	}
 	if ts.Spec.When.GitHubPullRequests != nil && ts.Spec.When.GitHubPullRequests.Repo != "" {
 		return ts.Spec.When.GitHubPullRequests.Repo
+	}
+	return ""
+}
+
+func taskSpawnerUsesGitLabSource(ts *kelos.TaskSpawner) bool {
+	return ts.Spec.When.GitLabIssues != nil || ts.Spec.When.GitLabMergeRequests != nil
+}
+
+func gitlabSourceRepoOverride(ts *kelos.TaskSpawner) string {
+	if ts.Spec.When.GitLabIssues != nil && ts.Spec.When.GitLabIssues.Repo != "" {
+		return ts.Spec.When.GitLabIssues.Repo
+	}
+	if ts.Spec.When.GitLabMergeRequests != nil && ts.Spec.When.GitLabMergeRequests.Repo != "" {
+		return ts.Spec.When.GitLabMergeRequests.Repo
 	}
 	return ""
 }

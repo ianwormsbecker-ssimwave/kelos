@@ -30,6 +30,14 @@ type When struct {
 	// +optional
 	GitHubPullRequests *GitHubPullRequests `json:"githubPullRequests,omitempty"`
 
+	// GitLabIssues discovers issues from a GitLab.com project.
+	// +optional
+	GitLabIssues *GitLabIssues `json:"gitlabIssues,omitempty"`
+
+	// GitLabMergeRequests discovers merge requests from a GitLab.com project.
+	// +optional
+	GitLabMergeRequests *GitLabMergeRequests `json:"gitlabMergeRequests,omitempty"`
+
 	// Cron triggers task spawning on a cron schedule.
 	// +optional
 	Cron *Cron `json:"cron,omitempty"`
@@ -342,6 +350,118 @@ type FilePatterns struct {
 	// An item whose changed files all match Exclude is rejected.
 	// +optional
 	Exclude []string `json:"exclude,omitempty"`
+}
+
+// GitLabIssues discovers issues from a GitLab.com project.
+// By default the project path is derived from the workspace's repo URL
+// specified in taskTemplate.workspaceRef. Set the Repo field to override
+// this. If the workspace has a secretRef, its GITLAB_TOKEN key (or
+// GITHUB_TOKEN as a fallback) is used for GitLab API authentication.
+type GitLabIssues struct {
+	// Repo optionally overrides the project to poll for issues, as a full
+	// GitLab project path (e.g. "group/subgroup/project") or a full URL.
+	// When empty, the project is derived from the workspace repo URL in
+	// taskTemplate.workspaceRef.
+	// +optional
+	Repo string `json:"repo,omitempty"`
+
+	// Labels filters issues by labels (server-side; an issue must have all
+	// listed labels).
+	// +optional
+	Labels []string `json:"labels,omitempty"`
+
+	// ExcludeLabels filters out issues that have any of these labels (client-side).
+	// +optional
+	ExcludeLabels []string `json:"excludeLabels,omitempty"`
+
+	// State filters issues by state (open, closed, all). Defaults to open.
+	// +kubebuilder:validation:Enum=open;closed;all
+	// +kubebuilder:default=open
+	// +optional
+	State string `json:"state,omitempty"`
+
+	// Author filters issues by the username of the user who created them
+	// (server-side via the GitLab API's "author_username" parameter). When
+	// empty, no author filtering is applied.
+	// +optional
+	Author string `json:"author,omitempty"`
+
+	// ExcludeAuthors filters out issues created by any of these usernames
+	// (client-side). When empty, no author exclusion is applied.
+	// +optional
+	ExcludeAuthors []string `json:"excludeAuthors,omitempty"`
+
+	// PriorityLabels defines a label-based priority order for discovered items.
+	// When maxConcurrency limits how many tasks are created per cycle,
+	// items are sorted by the first matching label before task creation.
+	// Index 0 is the highest priority. Items without a matching label
+	// are scheduled last. When empty, items are processed in discovery order.
+	// +optional
+	PriorityLabels []string `json:"priorityLabels,omitempty"`
+
+	// PollInterval is how often this source is polled (e.g., "30s", "5m").
+	// When empty, a default of 5m is used.
+	// +optional
+	PollInterval string `json:"pollInterval,omitempty"`
+}
+
+// GitLabMergeRequests discovers merge requests from a GitLab.com project.
+// By default the project path is derived from the workspace's repo URL
+// specified in taskTemplate.workspaceRef. Set the Repo field to override
+// this. If the workspace has a secretRef, its GITLAB_TOKEN key (or
+// GITHUB_TOKEN as a fallback) is used for GitLab API authentication.
+type GitLabMergeRequests struct {
+	// Repo optionally overrides the project to poll for merge requests, as a
+	// full GitLab project path (e.g. "group/subgroup/project") or a full URL.
+	// When empty, the project is derived from the workspace repo URL in
+	// taskTemplate.workspaceRef.
+	// +optional
+	Repo string `json:"repo,omitempty"`
+
+	// Labels filters merge requests by labels (server-side; a merge request
+	// must have all listed labels).
+	// +optional
+	Labels []string `json:"labels,omitempty"`
+
+	// ExcludeLabels filters out merge requests that have any of these labels (client-side).
+	// +optional
+	ExcludeLabels []string `json:"excludeLabels,omitempty"`
+
+	// State filters merge requests by state (open, merged, closed, all).
+	// Defaults to open.
+	// +kubebuilder:validation:Enum=open;merged;closed;all
+	// +kubebuilder:default=open
+	// +optional
+	State string `json:"state,omitempty"`
+
+	// Author filters merge requests by the username of the user who opened
+	// them (server-side via the GitLab API's "author_username" parameter).
+	// When empty, no author filtering is applied.
+	// +optional
+	Author string `json:"author,omitempty"`
+
+	// ExcludeAuthors filters out merge requests opened by any of these
+	// usernames (client-side). When empty, no author exclusion is applied.
+	// +optional
+	ExcludeAuthors []string `json:"excludeAuthors,omitempty"`
+
+	// Draft filters merge requests by draft state. When unset, both draft and
+	// ready merge requests are included.
+	// +optional
+	Draft *bool `json:"draft,omitempty"`
+
+	// PriorityLabels defines a label-based priority order for discovered items.
+	// When maxConcurrency limits how many tasks are created per cycle,
+	// items are sorted by the first matching label before task creation.
+	// Index 0 is the highest priority. Items without a matching label
+	// are scheduled last. When empty, items are processed in discovery order.
+	// +optional
+	PriorityLabels []string `json:"priorityLabels,omitempty"`
+
+	// PollInterval is how often this source is polled (e.g., "30s", "5m").
+	// When empty, a default of 5m is used.
+	// +optional
+	PollInterval string `json:"pollInterval,omitempty"`
 }
 
 // Jira discovers issues from a Jira project.
@@ -985,6 +1105,7 @@ type TaskTemplate struct {
 	// Available variables (all sources): {{.ID}}, {{.Title}}, {{.Kind}}
 	// GitHub issue/Jira sources: {{.Number}}, {{.Body}}, {{.URL}}, {{.Labels}}, {{.Comments}}
 	// GitHub pull request sources additionally expose: {{.Branch}}, {{.ReviewState}}, {{.ReviewComments}}
+	// GitLab issue and merge request sources: {{.Number}}, {{.Body}}, {{.URL}}, {{.Labels}}, {{.Comments}}; merge requests additionally expose {{.Branch}}
 	// GitHub webhook sources: {{.Event}}, {{.Action}}, {{.Sender}}, {{.Ref}}, {{.Repository}}, {{.Payload}} (full payload access); issue and pull request events also expose {{.Number}}, {{.Title}}, {{.Body}}, {{.URL}} (plus {{.Branch}} for pull requests)
 	// Linear webhook sources: {{.Type}}, {{.Action}}, {{.State}}, {{.Labels}}, {{.IssueID}}, {{.Payload}}
 	// Cron sources: {{.Time}}, {{.Schedule}}
@@ -996,6 +1117,7 @@ type TaskTemplate struct {
 	// Available variables (all sources): {{.ID}}, {{.Title}}, {{.Kind}}
 	// GitHub issue/Jira sources: {{.Number}}, {{.Body}}, {{.URL}}, {{.Labels}}, {{.Comments}}
 	// GitHub pull request sources additionally expose: {{.Branch}}, {{.ReviewState}}, {{.ReviewComments}}
+	// GitLab issue and merge request sources: {{.Number}}, {{.Body}}, {{.URL}}, {{.Labels}}, {{.Comments}}; merge requests additionally expose {{.Branch}}
 	// GitHub webhook sources: {{.Event}}, {{.Action}}, {{.Sender}}, {{.Ref}}, {{.Repository}}, {{.Payload}} (full payload access); issue and pull request events also expose {{.Number}}, {{.Title}}, {{.Body}}, {{.URL}} (plus {{.Branch}} for pull requests)
 	// Linear webhook sources: {{.Type}}, {{.Action}}, {{.State}}, {{.Labels}}, {{.IssueID}}, {{.Payload}}
 	// Cron sources: {{.Time}}, {{.Schedule}}
@@ -1026,6 +1148,7 @@ type TaskTemplate struct {
 	// Available variables (all sources): {{.ID}}, {{.Title}}, {{.Kind}}
 	// GitHub issue/Jira sources: {{.Number}}, {{.Body}}, {{.URL}}, {{.Labels}}, {{.Comments}}
 	// GitHub pull request sources additionally expose: {{.Branch}}, {{.ReviewState}}, {{.ReviewComments}}
+	// GitLab issue and merge request sources: {{.Number}}, {{.Body}}, {{.URL}}, {{.Labels}}, {{.Comments}}; merge requests additionally expose {{.Branch}}
 	// GitHub webhook sources: {{.Event}}, {{.Action}}, {{.Sender}}, {{.Ref}}, {{.Repository}}, {{.Payload}} (full payload access); issue and pull request events also expose {{.Number}}, {{.Title}}, {{.Body}}, {{.URL}} (plus {{.Branch}} for pull requests)
 	// Linear webhook sources: {{.Type}}, {{.Action}}, {{.State}}, {{.Labels}}, {{.IssueID}}, {{.Payload}}
 	// Cron sources: {{.Time}}, {{.Schedule}}
@@ -1084,7 +1207,7 @@ type TaskTemplate struct {
 }
 
 // TaskSpawnerSpec defines the desired state of TaskSpawner.
-// +kubebuilder:validation:XValidation:rule="!(has(self.when.githubIssues) || has(self.when.githubPullRequests) || has(self.when.githubWebhook) || has(self.when.linearWebhook)) || has(self.taskTemplate.workspaceRef) || (has(self.taskTemplate.worker) && has(self.taskTemplate.worker.workspaceRef)) || has(self.taskTemplate.workerPoolRef)",message="a workspace source is required when using githubIssues, githubPullRequests, githubWebhook, or linearWebhook source (set taskTemplate.workspaceRef, taskTemplate.worker.workspaceRef, or taskTemplate.workerPoolRef — a pool satisfies this because it carries its own workspace)"
+// +kubebuilder:validation:XValidation:rule="!(has(self.when.githubIssues) || has(self.when.githubPullRequests) || has(self.when.gitlabIssues) || has(self.when.gitlabMergeRequests) || has(self.when.githubWebhook) || has(self.when.linearWebhook)) || has(self.taskTemplate.workspaceRef) || (has(self.taskTemplate.worker) && has(self.taskTemplate.worker.workspaceRef)) || has(self.taskTemplate.workerPoolRef)",message="a workspace source is required when using githubIssues, githubPullRequests, gitlabIssues, gitlabMergeRequests, githubWebhook, or linearWebhook source (set taskTemplate.workspaceRef, taskTemplate.worker.workspaceRef, or taskTemplate.workerPoolRef — a pool satisfies this because it carries its own workspace)"
 // +kubebuilder:validation:XValidation:rule="has(self.taskTemplate.workerPoolRef) || (has(self.taskTemplate.worker) && (has(self.taskTemplate.worker.credentials) || has(self.credentials))) || (has(self.taskTemplate.type) && (has(self.taskTemplate.credentials) || has(self.credentials)))",message="inline task templates require taskTemplate credentials or spec.credentials"
 // +kubebuilder:validation:XValidation:rule="!has(self.credentials) || (!has(self.taskTemplate.workerPoolRef) && !has(self.taskTemplate.credentials) && (!has(self.taskTemplate.worker) || !has(self.taskTemplate.worker.credentials)))",message="spec.credentials is mutually exclusive with taskTemplate credentials and workerPoolRef"
 type TaskSpawnerSpec struct {

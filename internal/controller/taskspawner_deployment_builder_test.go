@@ -408,6 +408,91 @@ func TestDeploymentBuilder_GitHubTokenWhenGHProxyDisabled(t *testing.T) {
 	}
 }
 
+func TestDeploymentBuilder_GitLabSource(t *testing.T) {
+	builder := NewDeploymentBuilder()
+	ts := &kelos.TaskSpawner{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "gitlab-spawner",
+			Namespace: "default",
+		},
+		Spec: kelos.TaskSpawnerSpec{
+			When: kelos.When{
+				GitLabIssues: &kelos.GitLabIssues{},
+			},
+			TaskTemplate: kelos.TaskTemplate{
+				WorkspaceRef: &kelos.WorkspaceReference{Name: "my-workspace"},
+			},
+		},
+	}
+	workspace := &kelos.WorkspaceSpec{
+		Repo:      "https://gitlab.com/group/subgroup/project.git",
+		SecretRef: &kelos.SecretReference{Name: "gitlab-token"},
+	}
+
+	deploy := builder.Build(ts, workspace, false)
+	spawner := deploy.Spec.Template.Spec.Containers[0]
+
+	var hasProjectArg bool
+	for _, arg := range spawner.Args {
+		if arg == "--gitlab-project=group/subgroup/project" {
+			hasProjectArg = true
+		}
+		if strings.HasPrefix(arg, "--github-owner=") || strings.HasPrefix(arg, "--github-repo=") {
+			t.Errorf("GitHub arg %q must not be set for a GitLab source", arg)
+		}
+	}
+	if !hasProjectArg {
+		t.Errorf("--gitlab-project arg missing; args=%v", spawner.Args)
+	}
+
+	envByName := map[string]corev1.EnvVar{}
+	for _, env := range spawner.Env {
+		envByName[env.Name] = env
+	}
+	for _, name := range []string{"GITLAB_TOKEN", "GITHUB_TOKEN"} {
+		env, ok := envByName[name]
+		if !ok {
+			t.Fatalf("%s env missing for GitLab source; env=%v", name, spawner.Env)
+		}
+		ref := env.ValueFrom.SecretKeyRef
+		if ref.Name != "gitlab-token" || ref.Key != name {
+			t.Errorf("%s secretKeyRef = %+v, want key %s of secret gitlab-token", name, ref, name)
+		}
+		if ref.Optional == nil || !*ref.Optional {
+			t.Errorf("%s secretKeyRef must be optional", name)
+		}
+	}
+}
+
+func TestDeploymentBuilder_GitLabSourceRepoOverride(t *testing.T) {
+	builder := NewDeploymentBuilder()
+	ts := &kelos.TaskSpawner{
+		ObjectMeta: metav1.ObjectMeta{Name: "gitlab-spawner", Namespace: "default"},
+		Spec: kelos.TaskSpawnerSpec{
+			When: kelos.When{
+				GitLabMergeRequests: &kelos.GitLabMergeRequests{Repo: "upstream-group/project"},
+			},
+			TaskTemplate: kelos.TaskTemplate{
+				WorkspaceRef: &kelos.WorkspaceReference{Name: "my-workspace"},
+			},
+		},
+	}
+	workspace := &kelos.WorkspaceSpec{Repo: "https://gitlab.com/fork-group/project.git"}
+
+	deploy := builder.Build(ts, workspace, false)
+	spawner := deploy.Spec.Template.Spec.Containers[0]
+
+	found := false
+	for _, arg := range spawner.Args {
+		if arg == "--gitlab-project=upstream-group/project" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("--gitlab-project override missing; args=%v", spawner.Args)
+	}
+}
+
 func enableGitHubReporting(ts *kelos.TaskSpawner) {
 	if ts.Spec.When.GitHubIssues != nil {
 		ts.Spec.When.GitHubIssues.Reporting = &kelos.GitHubReporting{Comments: &kelos.GitHubCommentsReporting{}}
