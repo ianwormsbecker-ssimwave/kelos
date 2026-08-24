@@ -792,6 +792,23 @@ to receive refreshed credentials during long-running work.
 | `spec.when.githubPullRequests.filePatterns.include` | Doublestar globs for changed files to include after `exclude` patterns are removed. When omitted, any remaining changed file passes | No |
 | `spec.when.githubPullRequests.filePatterns.exclude` | Doublestar globs for changed files to remove before include matching. A PR with no remaining changed files is skipped | No |
 | `spec.when.githubPullRequests.pollInterval` | Per-source poll interval (e.g., `"30s"`, `"5m"`). Defaults to `5m` when omitted | No |
+| `spec.when.gitlabIssues.repo` | Override the GitLab.com project to poll for issues (full project path like `group/subgroup/project` or full URL); defaults to the workspace repo URL | No |
+| `spec.when.gitlabIssues.labels` | Filter issues by labels (an issue must have all listed labels) | No |
+| `spec.when.gitlabIssues.excludeLabels` | Exclude issues with any of these labels (client-side) | No |
+| `spec.when.gitlabIssues.state` | Filter by state: `open`, `closed`, `all` (default: `open`) | No |
+| `spec.when.gitlabIssues.author` | Filter by issue author username | No |
+| `spec.when.gitlabIssues.excludeAuthors` | Exclude issues created by any of these usernames (client-side) | No |
+| `spec.when.gitlabIssues.priorityLabels` | Priority-order labels for task selection when `maxConcurrency` is set; index 0 is highest priority | No |
+| `spec.when.gitlabIssues.pollInterval` | Per-source poll interval (e.g., `"30s"`, `"5m"`). Defaults to `5m` when omitted | No |
+| `spec.when.gitlabMergeRequests.repo` | Override the GitLab.com project to poll for merge requests (full project path or full URL); defaults to the workspace repo URL | No |
+| `spec.when.gitlabMergeRequests.labels` | Filter merge requests by labels (a merge request must have all listed labels) | No |
+| `spec.when.gitlabMergeRequests.excludeLabels` | Exclude merge requests with any of these labels (client-side) | No |
+| `spec.when.gitlabMergeRequests.state` | Filter by state: `open`, `merged`, `closed`, `all` (default: `open`) | No |
+| `spec.when.gitlabMergeRequests.author` | Filter by merge request author username | No |
+| `spec.when.gitlabMergeRequests.excludeAuthors` | Exclude merge requests opened by any of these usernames (client-side) | No |
+| `spec.when.gitlabMergeRequests.draft` | Filter by draft state | No |
+| `spec.when.gitlabMergeRequests.priorityLabels` | Priority-order labels for task selection when `maxConcurrency` is set; index 0 is highest priority | No |
+| `spec.when.gitlabMergeRequests.pollInterval` | Per-source poll interval (e.g., `"30s"`, `"5m"`). Defaults to `5m` when omitted | No |
 | `spec.when.githubWebhook.events` | GitHub event types to listen for (e.g., `"issues"`, `"pull_request"`, `"push"`, `"issue_comment"`) | Yes (when using githubWebhook) |
 | `spec.when.githubWebhook.repository` | Restrict webhooks to a specific repository (`owner/repo` format); if empty, webhooks from any repository are accepted | No |
 | `spec.when.githubWebhook.excludeAuthors` | Exclude webhook events sent by any of these usernames; applied before filter evaluation | No |
@@ -1011,6 +1028,8 @@ The `promptTemplate` field uses Go `text/template` syntax. Available variables d
 | `{{.CheckApp}}` | Check app name | Empty | Empty | App that produced the check (`check_run` events, e.g. `"GitHub Actions"`) | Empty | Empty | Empty | Empty |
 | `{{.Time}}` | Trigger time (RFC3339) | Empty | Empty | Empty | Empty | Empty | Empty | Cron tick time (e.g., `"2026-02-07T09:00:00Z"`) |
 | `{{.Schedule}}` | Cron schedule expression | Empty | Empty | Empty | Empty | Empty | Empty | Schedule string (e.g., `"0 * * * *"`) |
+
+GitLab issue and merge request sources (`gitlabIssues`, `gitlabMergeRequests`) expose the same core variables: `{{.ID}}` and `{{.Number}}` carry the project-scoped IID, plus `{{.Title}}`, `{{.Body}}`, `{{.URL}}`, `{{.Labels}}`, and `{{.Comments}}` (non-system notes). `{{.Kind}}` is `"Issue"` for issues and `"MR"` for merge requests; merge requests additionally expose `{{.Branch}}` (source branch).
 
 > **Generic Webhook only:** any additional keys declared in `spec.when.webhook.fieldMapping` are also exposed as top-level template variables (e.g., `fieldMapping: {severity: "$.level"}` makes `{{.severity}}` available).
 

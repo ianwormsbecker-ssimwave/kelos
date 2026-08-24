@@ -262,6 +262,58 @@ func TestTaskSpawnerConvert_ModernFieldsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTaskSpawnerConvert_GitLabSourcesRoundTrip(t *testing.T) {
+	draft := false
+	hub := &v1alpha2.TaskSpawner{
+		Spec: v1alpha2.TaskSpawnerSpec{
+			When: v1alpha2.When{
+				GitLabMergeRequests: &v1alpha2.GitLabMergeRequests{
+					Repo:           "group/subgroup/project",
+					Labels:         []string{"agent"},
+					ExcludeLabels:  []string{"wontfix"},
+					State:          "merged",
+					Author:         "alice",
+					ExcludeAuthors: []string{"bot"},
+					Draft:          &draft,
+					PriorityLabels: []string{"urgent"},
+					PollInterval:   "45s",
+				},
+			},
+		},
+	}
+	down := &v1alpha1.TaskSpawner{}
+	if err := taskSpawnerFromHub(context.Background(), hub, down); err != nil {
+		t.Fatalf("taskSpawnerFromHub() error = %v", err)
+	}
+	if down.Spec.When.GitLabMergeRequests == nil {
+		t.Fatal("gitlabMergeRequests dropped on down-conversion")
+	}
+	back := &v1alpha2.TaskSpawner{}
+	if err := taskSpawnerToHub(context.Background(), down, back); err != nil {
+		t.Fatalf("taskSpawnerToHub() error = %v", err)
+	}
+	gl := back.Spec.When.GitLabMergeRequests
+	if gl == nil {
+		t.Fatal("gitlabMergeRequests dropped on round-trip")
+	}
+	if gl.Repo != "group/subgroup/project" || gl.State != "merged" || gl.Author != "alice" ||
+		gl.PollInterval != "45s" || gl.Draft == nil || *gl.Draft ||
+		len(gl.Labels) != 1 || len(gl.ExcludeLabels) != 1 || len(gl.ExcludeAuthors) != 1 || len(gl.PriorityLabels) != 1 {
+		t.Errorf("gitlabMergeRequests fields not preserved: %#v", gl)
+	}
+
+	hub.Spec.When = v1alpha2.When{
+		GitLabIssues: &v1alpha2.GitLabIssues{Repo: "group/project", State: "open"},
+	}
+	down = &v1alpha1.TaskSpawner{}
+	if err := taskSpawnerFromHub(context.Background(), hub, down); err != nil {
+		t.Fatalf("taskSpawnerFromHub() error = %v", err)
+	}
+	if down.Spec.When.GitLabIssues == nil || down.Spec.When.GitLabIssues.Repo != "group/project" {
+		t.Errorf("gitlabIssues not preserved on down-conversion: %#v", down.Spec.When.GitLabIssues)
+	}
+}
+
 // TestTaskSpawnerConvert_CheckRunFilterFieldsDownConvert verifies that the
 // v1alpha2-only check_run filter fields (Conclusion, CheckName) convert down to
 // v1alpha1 without error. v1alpha1 has no equivalent fields, so they are dropped

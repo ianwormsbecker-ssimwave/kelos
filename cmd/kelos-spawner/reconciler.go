@@ -28,6 +28,9 @@ type spawnerRuntimeConfig struct {
 	GitHubAppID      string
 	GHProxyURL       string
 	TokenResolver    func(context.Context) (string, error)
+	GitLabProject    string
+	GitLabAPIBaseURL string
+	GitLabToken      string
 	JiraBaseURL      string
 	JiraProject      string
 	JiraJQL          string
@@ -70,7 +73,7 @@ func (r *spawnerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func runOnce(ctx context.Context, cl client.Client, key types.NamespacedName, cfg spawnerRuntimeConfig) (time.Duration, error) {
-	if err := runCycleWithProxy(ctx, cl, key, cfg.GitHubOwner, cfg.GitHubRepo, cfg.GHProxyURL, cfg.GitHubAPIBaseURL, cfg.TokenResolver, cfg.JiraBaseURL, cfg.JiraProject, cfg.JiraJQL, cfg.HTTPClient); err != nil {
+	if err := runCycleWithProxy(ctx, cl, key, cfg); err != nil {
 		return 0, err
 	}
 
@@ -130,6 +133,10 @@ func resolvedPollInterval(ts *kelos.TaskSpawner) time.Duration {
 		sourceInterval = ts.Spec.When.GitHubIssues.PollInterval
 	case ts.Spec.When.GitHubPullRequests != nil:
 		sourceInterval = ts.Spec.When.GitHubPullRequests.PollInterval
+	case ts.Spec.When.GitLabIssues != nil:
+		sourceInterval = ts.Spec.When.GitLabIssues.PollInterval
+	case ts.Spec.When.GitLabMergeRequests != nil:
+		sourceInterval = ts.Spec.When.GitLabMergeRequests.PollInterval
 	case ts.Spec.When.Jira != nil:
 		sourceInterval = ts.Spec.When.Jira.PollInterval
 	}

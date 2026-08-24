@@ -7803,6 +7803,136 @@ spec:
                       rule: '!has(self.reporting) || !has(self.reporting.checks) ||
                         self.events.exists(e, e in [''pull_request'', ''pull_request_review'',
                         ''pull_request_review_comment'', ''pull_request_target''])'
+                  gitlabIssues:
+                    description: GitLabIssues discovers issues from a GitLab.com project.
+                    properties:
+                      author:
+                        description: |-
+                          Author filters issues by the username of the user who created them
+                          (server-side via the GitLab API's "author_username" parameter). When
+                          empty, no author filtering is applied.
+                        type: string
+                      excludeAuthors:
+                        description: |-
+                          ExcludeAuthors filters out issues created by any of these usernames
+                          (client-side). When empty, no author exclusion is applied.
+                        items:
+                          type: string
+                        type: array
+                      excludeLabels:
+                        description: ExcludeLabels filters out issues that have any
+                          of these labels (client-side).
+                        items:
+                          type: string
+                        type: array
+                      labels:
+                        description: |-
+                          Labels filters issues by labels (server-side; an issue must have all
+                          listed labels).
+                        items:
+                          type: string
+                        type: array
+                      pollInterval:
+                        description: |-
+                          PollInterval is how often this source is polled (e.g., "30s", "5m").
+                          When empty, a default of 5m is used.
+                        type: string
+                      priorityLabels:
+                        description: |-
+                          PriorityLabels defines a label-based priority order for discovered items.
+                          When maxConcurrency limits how many tasks are created per cycle,
+                          items are sorted by the first matching label before task creation.
+                          Index 0 is the highest priority. Items without a matching label
+                          are scheduled last. When empty, items are processed in discovery order.
+                        items:
+                          type: string
+                        type: array
+                      repo:
+                        description: |-
+                          Repo optionally overrides the project to poll for issues, as a full
+                          GitLab project path (e.g. "group/subgroup/project") or a full URL.
+                          When empty, the project is derived from the workspace repo URL in
+                          taskTemplate.workspaceRef.
+                        type: string
+                      state:
+                        default: open
+                        description: State filters issues by state (open, closed,
+                          all). Defaults to open.
+                        enum:
+                        - open
+                        - closed
+                        - all
+                        type: string
+                    type: object
+                  gitlabMergeRequests:
+                    description: GitLabMergeRequests discovers merge requests from
+                      a GitLab.com project.
+                    properties:
+                      author:
+                        description: |-
+                          Author filters merge requests by the username of the user who opened
+                          them (server-side via the GitLab API's "author_username" parameter).
+                          When empty, no author filtering is applied.
+                        type: string
+                      draft:
+                        description: |-
+                          Draft filters merge requests by draft state. When unset, both draft and
+                          ready merge requests are included.
+                        type: boolean
+                      excludeAuthors:
+                        description: |-
+                          ExcludeAuthors filters out merge requests opened by any of these
+                          usernames (client-side). When empty, no author exclusion is applied.
+                        items:
+                          type: string
+                        type: array
+                      excludeLabels:
+                        description: ExcludeLabels filters out merge requests that
+                          have any of these labels (client-side).
+                        items:
+                          type: string
+                        type: array
+                      labels:
+                        description: |-
+                          Labels filters merge requests by labels (server-side; a merge request
+                          must have all listed labels).
+                        items:
+                          type: string
+                        type: array
+                      pollInterval:
+                        description: |-
+                          PollInterval is how often this source is polled (e.g., "30s", "5m").
+                          When empty, a default of 5m is used.
+                        type: string
+                      priorityLabels:
+                        description: |-
+                          PriorityLabels defines a label-based priority order for discovered items.
+                          When maxConcurrency limits how many tasks are created per cycle,
+                          items are sorted by the first matching label before task creation.
+                          Index 0 is the highest priority. Items without a matching label
+                          are scheduled last. When empty, items are processed in discovery order.
+                        items:
+                          type: string
+                        type: array
+                      repo:
+                        description: |-
+                          Repo optionally overrides the project to poll for merge requests, as a
+                          full GitLab project path (e.g. "group/subgroup/project") or a full URL.
+                          When empty, the project is derived from the workspace repo URL in
+                          taskTemplate.workspaceRef.
+                        type: string
+                      state:
+                        default: open
+                        description: |-
+                          State filters merge requests by state (open, merged, closed, all).
+                          Defaults to open.
+                        enum:
+                        - open
+                        - merged
+                        - closed
+                        - all
+                        type: string
+                    type: object
                   jira:
                     description: Jira discovers issues from a Jira project.
                     properties:
@@ -8297,6 +8427,7 @@ spec:
                       Available variables (all sources): {{ "{{.ID}}" }}, {{ "{{.Title}}" }}, {{ "{{.Kind}}" }}
                       GitHub issue/Jira sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}
                       GitHub pull request sources additionally expose: {{ "{{.Branch}}" }}, {{ "{{.ReviewState}}" }}, {{ "{{.ReviewComments}}" }}
+                      GitLab issue and merge request sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}; merge requests additionally expose {{ "{{.Branch}}" }}
                       GitHub webhook sources: {{ "{{.Event}}" }}, {{ "{{.Action}}" }}, {{ "{{.Sender}}" }}, {{ "{{.Ref}}" }}, {{ "{{.Repository}}" }}, {{ "{{.Payload}}" }} (full payload access); issue and pull request events also expose {{ "{{.Number}}" }}, {{ "{{.Title}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }} (plus {{ "{{.Branch}}" }} for pull requests)
                       Linear webhook sources: {{ "{{.Type}}" }}, {{ "{{.Action}}" }}, {{ "{{.State}}" }}, {{ "{{.Labels}}" }}, {{ "{{.IssueID}}" }}, {{ "{{.Payload}}" }}
                       Cron sources: {{ "{{.Time}}" }}, {{ "{{.Schedule}}" }}
@@ -8598,6 +8729,7 @@ spec:
                       Available variables (all sources): {{ "{{.ID}}" }}, {{ "{{.Title}}" }}, {{ "{{.Kind}}" }}
                       GitHub issue/Jira sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}
                       GitHub pull request sources additionally expose: {{ "{{.Branch}}" }}, {{ "{{.ReviewState}}" }}, {{ "{{.ReviewComments}}" }}
+                      GitLab issue and merge request sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}; merge requests additionally expose {{ "{{.Branch}}" }}
                       GitHub webhook sources: {{ "{{.Event}}" }}, {{ "{{.Action}}" }}, {{ "{{.Sender}}" }}, {{ "{{.Ref}}" }}, {{ "{{.Repository}}" }}, {{ "{{.Payload}}" }} (full payload access); issue and pull request events also expose {{ "{{.Number}}" }}, {{ "{{.Title}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }} (plus {{ "{{.Branch}}" }} for pull requests)
                       Linear webhook sources: {{ "{{.Type}}" }}, {{ "{{.Action}}" }}, {{ "{{.State}}" }}, {{ "{{.Labels}}" }}, {{ "{{.IssueID}}" }}, {{ "{{.Payload}}" }}
                       Cron sources: {{ "{{.Time}}" }}, {{ "{{.Schedule}}" }}
@@ -15530,6 +15662,7 @@ spec:
                       Available variables (all sources): {{ "{{.ID}}" }}, {{ "{{.Title}}" }}, {{ "{{.Kind}}" }}
                       GitHub issue/Jira sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}
                       GitHub pull request sources additionally expose: {{ "{{.Branch}}" }}, {{ "{{.ReviewState}}" }}, {{ "{{.ReviewComments}}" }}
+                      GitLab issue and merge request sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}; merge requests additionally expose {{ "{{.Branch}}" }}
                       GitHub webhook sources: {{ "{{.Event}}" }}, {{ "{{.Action}}" }}, {{ "{{.Sender}}" }}, {{ "{{.Ref}}" }}, {{ "{{.Repository}}" }}, {{ "{{.Payload}}" }} (full payload access); issue and pull request events also expose {{ "{{.Number}}" }}, {{ "{{.Title}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }} (plus {{ "{{.Branch}}" }} for pull requests)
                       Linear webhook sources: {{ "{{.Type}}" }}, {{ "{{.Action}}" }}, {{ "{{.State}}" }}, {{ "{{.Labels}}" }}, {{ "{{.IssueID}}" }}, {{ "{{.Payload}}" }}
                       Cron sources: {{ "{{.Time}}" }}, {{ "{{.Schedule}}" }}
@@ -23159,6 +23292,136 @@ spec:
                       rule: '!has(self.reporting) || !has(self.reporting.checks) ||
                         self.events.exists(e, e in [''pull_request'', ''pull_request_review'',
                         ''pull_request_review_comment'', ''pull_request_target''])'
+                  gitlabIssues:
+                    description: GitLabIssues discovers issues from a GitLab.com project.
+                    properties:
+                      author:
+                        description: |-
+                          Author filters issues by the username of the user who created them
+                          (server-side via the GitLab API's "author_username" parameter). When
+                          empty, no author filtering is applied.
+                        type: string
+                      excludeAuthors:
+                        description: |-
+                          ExcludeAuthors filters out issues created by any of these usernames
+                          (client-side). When empty, no author exclusion is applied.
+                        items:
+                          type: string
+                        type: array
+                      excludeLabels:
+                        description: ExcludeLabels filters out issues that have any
+                          of these labels (client-side).
+                        items:
+                          type: string
+                        type: array
+                      labels:
+                        description: |-
+                          Labels filters issues by labels (server-side; an issue must have all
+                          listed labels).
+                        items:
+                          type: string
+                        type: array
+                      pollInterval:
+                        description: |-
+                          PollInterval is how often this source is polled (e.g., "30s", "5m").
+                          When empty, a default of 5m is used.
+                        type: string
+                      priorityLabels:
+                        description: |-
+                          PriorityLabels defines a label-based priority order for discovered items.
+                          When maxConcurrency limits how many tasks are created per cycle,
+                          items are sorted by the first matching label before task creation.
+                          Index 0 is the highest priority. Items without a matching label
+                          are scheduled last. When empty, items are processed in discovery order.
+                        items:
+                          type: string
+                        type: array
+                      repo:
+                        description: |-
+                          Repo optionally overrides the project to poll for issues, as a full
+                          GitLab project path (e.g. "group/subgroup/project") or a full URL.
+                          When empty, the project is derived from the workspace repo URL in
+                          taskTemplate.workspaceRef.
+                        type: string
+                      state:
+                        default: open
+                        description: State filters issues by state (open, closed,
+                          all). Defaults to open.
+                        enum:
+                        - open
+                        - closed
+                        - all
+                        type: string
+                    type: object
+                  gitlabMergeRequests:
+                    description: GitLabMergeRequests discovers merge requests from
+                      a GitLab.com project.
+                    properties:
+                      author:
+                        description: |-
+                          Author filters merge requests by the username of the user who opened
+                          them (server-side via the GitLab API's "author_username" parameter).
+                          When empty, no author filtering is applied.
+                        type: string
+                      draft:
+                        description: |-
+                          Draft filters merge requests by draft state. When unset, both draft and
+                          ready merge requests are included.
+                        type: boolean
+                      excludeAuthors:
+                        description: |-
+                          ExcludeAuthors filters out merge requests opened by any of these
+                          usernames (client-side). When empty, no author exclusion is applied.
+                        items:
+                          type: string
+                        type: array
+                      excludeLabels:
+                        description: ExcludeLabels filters out merge requests that
+                          have any of these labels (client-side).
+                        items:
+                          type: string
+                        type: array
+                      labels:
+                        description: |-
+                          Labels filters merge requests by labels (server-side; a merge request
+                          must have all listed labels).
+                        items:
+                          type: string
+                        type: array
+                      pollInterval:
+                        description: |-
+                          PollInterval is how often this source is polled (e.g., "30s", "5m").
+                          When empty, a default of 5m is used.
+                        type: string
+                      priorityLabels:
+                        description: |-
+                          PriorityLabels defines a label-based priority order for discovered items.
+                          When maxConcurrency limits how many tasks are created per cycle,
+                          items are sorted by the first matching label before task creation.
+                          Index 0 is the highest priority. Items without a matching label
+                          are scheduled last. When empty, items are processed in discovery order.
+                        items:
+                          type: string
+                        type: array
+                      repo:
+                        description: |-
+                          Repo optionally overrides the project to poll for merge requests, as a
+                          full GitLab project path (e.g. "group/subgroup/project") or a full URL.
+                          When empty, the project is derived from the workspace repo URL in
+                          taskTemplate.workspaceRef.
+                        type: string
+                      state:
+                        default: open
+                        description: |-
+                          State filters merge requests by state (open, merged, closed, all).
+                          Defaults to open.
+                        enum:
+                        - open
+                        - merged
+                        - closed
+                        - all
+                        type: string
+                    type: object
                   jira:
                     description: Jira discovers issues from a Jira project.
                     properties:
@@ -23432,10 +23695,12 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: a workspace source is required when using githubIssues, githubPullRequests,
-                githubWebhook, or linearWebhook source (set taskTemplate.workspaceRef,
-                taskTemplate.worker.workspaceRef, or taskTemplate.workerPoolRef —
-                a pool satisfies this because it carries its own workspace)
+                gitlabIssues, gitlabMergeRequests, githubWebhook, or linearWebhook
+                source (set taskTemplate.workspaceRef, taskTemplate.worker.workspaceRef,
+                or taskTemplate.workerPoolRef — a pool satisfies this because it carries
+                its own workspace)
               rule: '!(has(self.when.githubIssues) || has(self.when.githubPullRequests)
+                || has(self.when.gitlabIssues) || has(self.when.gitlabMergeRequests)
                 || has(self.when.githubWebhook) || has(self.when.linearWebhook)) ||
                 has(self.taskTemplate.workspaceRef) || (has(self.taskTemplate.worker)
                 && has(self.taskTemplate.worker.workspaceRef)) || has(self.taskTemplate.workerPoolRef)'

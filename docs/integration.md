@@ -125,6 +125,84 @@ To require the Check Run before merge, open the GitHub repository's **Settings â
 
 > **Note:** `reporting.checks` is supported for `githubPullRequests` and for `githubWebhook` sources that include a pull-request event type. It is rejected at admission for `githubIssues` sources.
 
+### GitLab Issues
+
+React to issues in a GitLab.com project. The spawner polls the GitLab API and creates a Task for each issue matching your filters. The project path is derived from the workspace repo URL (nested subgroups are supported); set `repo` to override it. When the workspace has a `secretRef`, its `GITLAB_TOKEN` key authenticates the GitLab API calls.
+
+```yaml
+apiVersion: kelos.dev/v1alpha2
+kind: TaskSpawner
+metadata:
+  name: fix-gitlab-bugs
+spec:
+  when:
+    gitlabIssues:
+      labels: [bug]
+      excludeLabels: [needs-triage]
+      state: open
+      pollInterval: 5m
+  taskTemplate:
+    type: claude-code
+    workspaceRef:
+      name: my-gitlab-workspace
+    credentials:
+      type: oauth
+      secretRef:
+        name: claude-oauth-token
+    promptTemplate: |
+      Fix the following GitLab issue and open a merge request with the fix.
+
+      Issue #{{.Number}}: {{.Title}}
+
+      {{.Body}}
+    branch: "fix-{{.Number}}"
+  maxConcurrency: 3
+```
+
+**Filtering options:** `labels`, `excludeLabels`, `state` (`open`, `closed`, `all`), `author`, `excludeAuthors`.
+
+**Template variables:** `{{.Number}}` (issue IID), `{{.Title}}`, `{{.Body}}`, `{{.URL}}`, `{{.Labels}}`, `{{.Comments}}` (non-system notes).
+
+### GitLab Merge Requests
+
+React to merge requests in a GitLab.com project.
+
+```yaml
+apiVersion: kelos.dev/v1alpha2
+kind: TaskSpawner
+metadata:
+  name: mr-reviewer
+spec:
+  when:
+    gitlabMergeRequests:
+      labels: [needs-review]
+      state: open
+      draft: false
+      pollInterval: 5m
+  taskTemplate:
+    type: claude-code
+    workspaceRef:
+      name: my-gitlab-workspace
+    credentials:
+      type: oauth
+      secretRef:
+        name: claude-oauth-token
+    promptTemplate: |
+      Review merge request !{{.Number}}: {{.Title}}
+
+      {{.Body}}
+
+      Branch: {{.Branch}}
+    branch: "{{.Branch}}"
+  maxConcurrency: 2
+```
+
+**MR-specific variables:** `{{.Branch}}` (source branch); `{{.Kind}}` is `MR`.
+
+**Additional filters:** `state` (`open`, `merged`, `closed`, `all`), `author`, `excludeAuthors`, `draft`.
+
+> **Note:** GitLab sources poll GitLab.com. Status reporting back to GitLab and self-managed GitLab instances are not yet supported.
+
 ### GitHub Webhooks
 
 React to GitHub webhook events in real time â€” issues, pull requests, pushes, reviews, and more. Unlike the polling-based GitHub Issues and Pull Requests sources, webhooks provide instant response to repository events.

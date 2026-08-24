@@ -374,6 +374,71 @@ func TestPrintTaskSpawnerTableGitHubPullRequests(t *testing.T) {
 	}
 }
 
+func TestPrintTaskSpawnerTableGitLabSources(t *testing.T) {
+	spawners := []kelos.TaskSpawner{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "gitlab-issue-spawner",
+				CreationTimestamp: metav1.NewTime(time.Now().Add(-1 * time.Hour)),
+			},
+			Spec: kelos.TaskSpawnerSpec{
+				When: kelos.When{GitLabIssues: &kelos.GitLabIssues{}},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "gitlab-mr-spawner",
+				CreationTimestamp: metav1.NewTime(time.Now().Add(-1 * time.Hour)),
+			},
+			Spec: kelos.TaskSpawnerSpec{
+				When: kelos.When{GitLabMergeRequests: &kelos.GitLabMergeRequests{}},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	printTaskSpawnerTable(&buf, spawners, false)
+	output := buf.String()
+
+	if !strings.Contains(output, "GitLab Issues") {
+		t.Errorf("expected 'GitLab Issues' as source in output, got %q", output)
+	}
+	if !strings.Contains(output, "GitLab Merge Requests") {
+		t.Errorf("expected 'GitLab Merge Requests' as source in output, got %q", output)
+	}
+}
+
+func TestPrintTaskSpawnerDetailGitLabMergeRequests(t *testing.T) {
+	spawner := &kelos.TaskSpawner{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mr-spawner",
+			Namespace: "default",
+		},
+		Spec: kelos.TaskSpawnerSpec{
+			When: kelos.When{
+				GitLabMergeRequests: &kelos.GitLabMergeRequests{
+					State:  "open",
+					Labels: []string{"needs-review"},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	printTaskSpawnerDetail(&buf, spawner)
+	output := buf.String()
+
+	for _, expected := range []string{
+		"Source:", "GitLab Merge Requests",
+		"State:", "open",
+		"Labels:", "[needs-review]",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("expected %q in detail output, got %q", expected, output)
+		}
+	}
+}
+
 func TestPrintTaskSpawnerTableGitHubIssuesWithWorkspace(t *testing.T) {
 	spawners := []kelos.TaskSpawner{
 		{

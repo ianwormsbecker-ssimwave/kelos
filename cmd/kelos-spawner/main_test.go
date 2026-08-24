@@ -249,6 +249,105 @@ func TestRunCycleWithSource_AssignsTaskSpawnerCredentials(t *testing.T) {
 	}
 }
 
+func TestBuildSource_GitLabIssues(t *testing.T) {
+	ts := newTaskSpawner("spawner", "default", nil)
+	ts.Spec.When = kelos.When{
+		GitLabIssues: &kelos.GitLabIssues{
+			Labels:         []string{"agent"},
+			ExcludeLabels:  []string{"wontfix"},
+			State:          "open",
+			Author:         "alice",
+			ExcludeAuthors: []string{"bot"},
+		},
+	}
+
+	src, err := buildSourceFromConfig(context.Background(), ts, spawnerRuntimeConfig{
+		GitLabProject:    "group/subgroup/project",
+		GitLabAPIBaseURL: "https://gitlab.example.com/api/v4",
+		GitLabToken:      "glpat-test",
+	})
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	glSrc, ok := src.(*source.GitLabIssueSource)
+	if !ok {
+		t.Fatalf("Expected *source.GitLabIssueSource, got %T", src)
+	}
+	if glSrc.Project != "group/subgroup/project" {
+		t.Errorf("Project = %q, want group/subgroup/project", glSrc.Project)
+	}
+	if glSrc.BaseURL != "https://gitlab.example.com/api/v4" {
+		t.Errorf("BaseURL = %q", glSrc.BaseURL)
+	}
+	if glSrc.Token != "glpat-test" {
+		t.Errorf("Token = %q, want glpat-test", glSrc.Token)
+	}
+	if glSrc.State != "open" || glSrc.Author != "alice" {
+		t.Errorf("State/Author = %q/%q", glSrc.State, glSrc.Author)
+	}
+	if len(glSrc.Labels) != 1 || glSrc.Labels[0] != "agent" {
+		t.Errorf("Labels = %v, want [agent]", glSrc.Labels)
+	}
+	if len(glSrc.ExcludeLabels) != 1 || len(glSrc.ExcludeAuthors) != 1 {
+		t.Errorf("ExcludeLabels/ExcludeAuthors = %v/%v", glSrc.ExcludeLabels, glSrc.ExcludeAuthors)
+	}
+}
+
+func TestBuildSource_GitLabMergeRequests(t *testing.T) {
+	ts := newTaskSpawner("spawner", "default", nil)
+	ts.Spec.When = kelos.When{
+		GitLabMergeRequests: &kelos.GitLabMergeRequests{
+			State: "merged",
+			Draft: boolPtr(false),
+		},
+	}
+
+	src, err := buildSourceFromConfig(context.Background(), ts, spawnerRuntimeConfig{
+		GitLabProject: "group/project",
+		GitLabToken:   "glpat-test",
+	})
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	glSrc, ok := src.(*source.GitLabMergeRequestSource)
+	if !ok {
+		t.Fatalf("Expected *source.GitLabMergeRequestSource, got %T", src)
+	}
+	if glSrc.Project != "group/project" || glSrc.State != "merged" {
+		t.Errorf("Project/State = %q/%q", glSrc.Project, glSrc.State)
+	}
+	if glSrc.Draft == nil || *glSrc.Draft {
+		t.Errorf("Draft = %v, want false", glSrc.Draft)
+	}
+	if glSrc.BaseURL != "" {
+		t.Errorf("BaseURL = %q, want empty (defaults to gitlab.com)", glSrc.BaseURL)
+	}
+}
+
+func TestSourceAnnotations_GitLab(t *testing.T) {
+	ts := newTaskSpawner("spawner", "default", nil)
+	ts.Spec.When = kelos.When{GitLabMergeRequests: &kelos.GitLabMergeRequests{}}
+
+	annotations := sourceAnnotations(ts, source.WorkItem{Kind: "MR", Number: 41})
+	if got := annotations[reporting.AnnotationSourceKind]; got != "merge-request" {
+		t.Errorf("source kind annotation = %q, want merge-request", got)
+	}
+	if got := annotations[reporting.AnnotationSourceNumber]; got != "41" {
+		t.Errorf("source number annotation = %q, want 41", got)
+	}
+	if _, ok := annotations[reporting.AnnotationGitHubReporting]; ok {
+		t.Error("GitHub reporting annotation must not be set for GitLab sources")
+	}
+
+	ts.Spec.When = kelos.When{GitLabIssues: &kelos.GitLabIssues{}}
+	annotations = sourceAnnotations(ts, source.WorkItem{Kind: "Issue", Number: 7})
+	if got := annotations[reporting.AnnotationSourceKind]; got != "issue" {
+		t.Errorf("source kind annotation = %q, want issue", got)
+	}
+}
+
 func TestBuildSource_GitHubIssuesWithBaseURL(t *testing.T) {
 	ts := newTaskSpawner("spawner", "default", nil)
 
@@ -2759,6 +2858,26 @@ func TestResolvedPollInterval_SourceOverridesRoot(t *testing.T) {
 	got := resolvedPollInterval(ts)
 	if got != 10*time.Second {
 		t.Fatalf("resolvedPollInterval = %v, want %v", got, 10*time.Second)
+	}
+}
+
+func TestResolvedPollInterval_GitLabSources(t *testing.T) {
+	ts := &kelos.TaskSpawner{
+		Spec: kelos.TaskSpawnerSpec{
+			When: kelos.When{
+				GitLabIssues: &kelos.GitLabIssues{PollInterval: "45s"},
+			},
+		},
+	}
+	if got := resolvedPollInterval(ts); got != 45*time.Second {
+		t.Fatalf("resolvedPollInterval = %v, want %v", got, 45*time.Second)
+	}
+
+	ts.Spec.When = kelos.When{
+		GitLabMergeRequests: &kelos.GitLabMergeRequests{PollInterval: "2m"},
+	}
+	if got := resolvedPollInterval(ts); got != 2*time.Minute {
+		t.Fatalf("resolvedPollInterval = %v, want %v", got, 2*time.Minute)
 	}
 }
 

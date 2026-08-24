@@ -28,6 +28,27 @@ func TestRepoHost(t *testing.T) {
 	}
 }
 
+func TestProjectPath(t *testing.T) {
+	tests := []struct {
+		repoURL string
+		want    string
+	}{
+		{repoURL: "https://gitlab.com/group/project.git", want: "group/project"},
+		{repoURL: "https://gitlab.com/group/subgroup/project.git", want: "group/subgroup/project"},
+		{repoURL: "https://oauth2@gitlab.com/group/project", want: "group/project"},
+		{repoURL: "git@gitlab.com:group/subgroup/project.git", want: "group/subgroup/project"},
+		{repoURL: "ssh://git@gitlab.com/group/project.git", want: "group/project"},
+		{repoURL: "group/subgroup/project", want: "group/subgroup/project"},
+		{repoURL: "https://github.com/owner/repo.git", want: "owner/repo"},
+		{repoURL: "", want: ""},
+	}
+	for _, tt := range tests {
+		if got := ProjectPath(tt.repoURL); got != tt.want {
+			t.Errorf("ProjectPath(%q) = %q, want %q", tt.repoURL, got, tt.want)
+		}
+	}
+}
+
 func TestIsGitLab(t *testing.T) {
 	tests := []struct {
 		repoURL string
