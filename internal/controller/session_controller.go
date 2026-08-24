@@ -1744,10 +1744,13 @@ func (r *SessionReconciler) buildSessionStatefulSet(session *kelos.Session, work
 		}
 	}
 	credentialHelper := ""
+	credentialUsername := gitCredentialDefaultUsername
 	if workspace != nil && workspace.SecretRef != nil {
-		credentialHelper = gitCredentialHelper()
+		gitAuth := workspaceGitAuthFor(workspace.Repo)
+		credentialHelper = gitAuth.credentialHelper()
+		credentialUsername = gitAuth.username
 	}
-	if err := prepareSessionWorkspaceInit(podSpec.InitContainers, credentialHelper); err != nil {
+	if err := prepareSessionWorkspaceInit(podSpec.InitContainers, credentialHelper, credentialUsername); err != nil {
 		return nil, nil, err
 	}
 
@@ -1870,7 +1873,7 @@ func sessionSelectorLabels(session *kelos.Session) map[string]string {
 	}
 }
 
-func prepareSessionWorkspaceInit(containers []corev1.Container, credentialHelper string) error {
+func prepareSessionWorkspaceInit(containers []corev1.Container, credentialHelper, credentialUsername string) error {
 	for i := range containers {
 		container := &containers[i]
 		switch container.Name {
@@ -1879,7 +1882,7 @@ func prepareSessionWorkspaceInit(containers []corev1.Container, credentialHelper
 			if credentialHelper != "" {
 				initializedAction = fmt.Sprintf(
 					`{ %s; } || exit $?; exit 0`,
-					workspaceGitCredentialConfigScript(credentialHelper),
+					workspaceGitCredentialConfigScript(credentialHelper, credentialUsername),
 				)
 			}
 			prefix := `if [ -f ` + sessionInitializedPath + ` ]; then ` + initializedAction + `; fi

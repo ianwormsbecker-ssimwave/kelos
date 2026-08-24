@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kelos "github.com/kelos-dev/kelos/api/v1alpha2"
+	"github.com/kelos-dev/kelos/internal/gitprovider"
 )
 
 func newCreateCommand(cfg *ClientConfig) *cobra.Command {
@@ -75,8 +76,12 @@ func newCreateWorkspaceCommand(cfg *ClientConfig) *cobra.Command {
 
 			if token != "" {
 				secretName := name + "-credentials"
+				tokenKey := "GITHUB_TOKEN"
+				if gitprovider.IsGitLab(repo) {
+					tokenKey = "GITLAB_TOKEN"
+				}
 				if !dryRun {
-					if err := ensureCredentialSecret(cfg, secretName, "GITHUB_TOKEN", token, yes); err != nil {
+					if err := ensureCredentialSecret(cfg, secretName, tokenKey, token, yes); err != nil {
 						return err
 					}
 				}
@@ -105,8 +110,8 @@ func newCreateWorkspaceCommand(cfg *ClientConfig) *cobra.Command {
 
 	cmd.Flags().StringVar(&repo, "repo", "", "git repository URL (required)")
 	cmd.Flags().StringVar(&ref, "ref", "", "git reference (branch, tag, or commit SHA)")
-	cmd.Flags().StringVar(&secret, "secret", "", "secret name containing GITHUB_TOKEN for git authentication")
-	cmd.Flags().StringVar(&token, "token", "", "GitHub token (auto-creates a secret)")
+	cmd.Flags().StringVar(&secret, "secret", "", "secret name containing GITHUB_TOKEN (or GITLAB_TOKEN for GitLab.com repos) for git authentication")
+	cmd.Flags().StringVar(&token, "token", "", "git hosting token (auto-creates a secret; stored as GITLAB_TOKEN for GitLab.com repos, GITHUB_TOKEN otherwise)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the resource that would be created without submitting it")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation prompts")
 

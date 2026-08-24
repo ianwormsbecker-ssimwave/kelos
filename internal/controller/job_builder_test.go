@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -958,7 +957,8 @@ func TestGitCredentialHelperUsername(t *testing.T) {
 	if err != nil {
 		t.Skip("git is not available")
 	}
-	tokenFile := filepath.Join(t.TempDir(), GitHubTokenSecretKey)
+	tokenAuth := githubWorkspaceGitAuth
+	tokenAuth.mountPath = t.TempDir()
 
 	tests := []struct {
 		name               string
@@ -993,7 +993,7 @@ func TestGitCredentialHelperUsername(t *testing.T) {
 				args = append(args, "-c", "credential.username="+tt.configuredUsername)
 			}
 			args = append(args,
-				"-c", "credential.helper="+gitCredentialHelperForTokenFile(tokenFile),
+				"-c", "credential.helper="+tokenAuth.credentialHelper(),
 				"-c", "credential.username="+gitCredentialDefaultUsername,
 				"credential", "fill",
 			)
@@ -1009,6 +1009,160 @@ func TestGitCredentialHelperUsername(t *testing.T) {
 				t.Errorf("git credential fill output missing %q", strings.TrimSpace(want))
 			}
 		})
+	}
+}
+
+func TestGitLabCredentialHelperTokenFallback(t *testing.T) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not available")
+	}
+
+	tests := []struct {
+		name         string
+		fileToken    string
+		env          []string
+		wantPassword string
+	}{
+		{
+			name:         "prefers mounted token file",
+			fileToken:    "glpat-from-file",
+			env:          []string{"GITLAB_TOKEN=glpat-from-env", "GITHUB_TOKEN=ghp-legacy"},
+			wantPassword: "glpat-from-file",
+		},
+		{
+			name:         "falls back to GITLAB_TOKEN env",
+			env:          []string{"GITLAB_TOKEN=glpat-from-env", "GITHUB_TOKEN=ghp-legacy"},
+			wantPassword: "glpat-from-env",
+		},
+		{
+			name:         "falls back to legacy GITHUB_TOKEN env",
+			env:          []string{"GITHUB_TOKEN=ghp-legacy"},
+			wantPassword: "ghp-legacy",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth := gitlabWorkspaceGitAuth
+			auth.mountPath = t.TempDir()
+			if tt.fileToken != "" {
+				if err := os.WriteFile(auth.tokenFile(), []byte(tt.fileToken), 0o600); err != nil {
+					t.Fatalf("writing token file: %v", err)
+				}
+			}
+
+			cmd := exec.Command(gitPath,
+				"-c", "credential.helper=",
+				"-c", "credential.helper="+auth.credentialHelper(),
+				"-c", "credential.username="+auth.username,
+				"credential", "fill",
+			)
+			cmd.Stdin = strings.NewReader("protocol=https\nhost=gitlab.com\n\n")
+			cmd.Env = append(append(os.Environ(), tt.env...), "GIT_TERMINAL_PROMPT=0")
+
+			output, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("git credential fill failed: %v", err)
+			}
+			if want := "password=" + tt.wantPassword + "\n"; !strings.Contains(string(output), want) {
+				t.Errorf("git credential fill output missing %q, got:\n%s", strings.TrimSpace(want), output)
+			}
+			if want := "username=" + gitlabCredentialUsername + "\n"; !strings.Contains(string(output), want) {
+				t.Errorf("git credential fill output missing %q, got:\n%s", strings.TrimSpace(want), output)
+			}
+		})
+	}
+}
+
+func TestBuildClaudeCodeJob_GitLabWorkspace(t *testing.T) {
+	builder := NewJobBuilder()
+	task := &kelos.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-gitlab",
+			Namespace: "default",
+		},
+		Spec: kelos.TaskSpec{
+			Type:   AgentTypeClaudeCode,
+			Prompt: "Fix the bug",
+			Credentials: &kelos.Credentials{
+				Type:      kelos.CredentialTypeAPIKey,
+				SecretRef: &kelos.SecretReference{Name: "my-secret"},
+			},
+		},
+	}
+
+	workspace := &kelos.WorkspaceSpec{
+		Repo: "https://gitlab.com/my-group/my-subgroup/my-repo.git",
+		SecretRef: &kelos.SecretReference{
+			Name: "gitlab-token",
+		},
+	}
+
+	job, err := builder.Build(task, workspace, nil, task.Spec.Prompt)
+	if err != nil {
+		t.Fatalf("Build() returned error: %v", err)
+	}
+
+	container := job.Spec.Template.Spec.Containers[0]
+	envByName := map[string]corev1.EnvVar{}
+	for _, env := range container.Env {
+		envByName[env.Name] = env
+	}
+
+	gitlabToken, ok := envByName["GITLAB_TOKEN"]
+	if !ok {
+		t.Fatal("Expected GITLAB_TOKEN to be set for GitLab workspace")
+	}
+	if ref := gitlabToken.ValueFrom.SecretKeyRef; ref.Name != "gitlab-token" || ref.Key != GitLabTokenSecretKey || ref.Optional == nil || !*ref.Optional {
+		t.Errorf("GITLAB_TOKEN secretKeyRef = %+v, want optional key %q of secret %q", ref, GitLabTokenSecretKey, "gitlab-token")
+	}
+	legacyToken, ok := envByName["GITHUB_TOKEN"]
+	if !ok {
+		t.Fatal("Expected legacy GITHUB_TOKEN env to be kept for GitLab workspace")
+	}
+	if ref := legacyToken.ValueFrom.SecretKeyRef; ref.Key != GitHubTokenSecretKey || ref.Optional == nil || !*ref.Optional {
+		t.Errorf("GITHUB_TOKEN secretKeyRef = %+v, want optional key %q", ref, GitHubTokenSecretKey)
+	}
+	if got := envByName["KELOS_GITLAB_TOKEN_FILE"].Value; got != GitLabTokenMountPath+"/"+GitLabTokenSecretKey {
+		t.Errorf("KELOS_GITLAB_TOKEN_FILE = %q, want %q", got, GitLabTokenMountPath+"/"+GitLabTokenSecretKey)
+	}
+	for _, name := range []string{"GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR", "KELOS_GITHUB_TOKEN_FILE"} {
+		if _, ok := envByName[name]; ok {
+			t.Errorf("%s should not be set for GitLab workspace", name)
+		}
+	}
+
+	initContainer := job.Spec.Template.Spec.InitContainers[0]
+	if initContainer.Name != "git-clone" {
+		t.Fatalf("Expected first init container to be git-clone, got %q", initContainer.Name)
+	}
+	if len(initContainer.Command) != 3 {
+		t.Fatalf("Expected shell-wrapped clone command, got %v", initContainer.Command)
+	}
+	script := initContainer.Command[2]
+	if want := "credential.username=" + gitlabCredentialUsername; !strings.Contains(script, want) {
+		t.Errorf("git-clone command missing %q: %q", want, script)
+	}
+	if want := GitLabTokenMountPath + "/" + GitLabTokenSecretKey; !strings.Contains(script, want) {
+		t.Errorf("git-clone command does not read the GitLab token file %q: %q", want, script)
+	}
+
+	var tokenVolume *corev1.Volume
+	for i := range job.Spec.Template.Spec.Volumes {
+		if job.Spec.Template.Spec.Volumes[i].Name == GitLabTokenVolumeName {
+			tokenVolume = &job.Spec.Template.Spec.Volumes[i]
+			break
+		}
+	}
+	if tokenVolume == nil {
+		t.Fatalf("Expected volume %q for GitLab workspace", GitLabTokenVolumeName)
+	}
+	if tokenVolume.Secret.SecretName != "gitlab-token" {
+		t.Errorf("Token volume secret = %q, want %q", tokenVolume.Secret.SecretName, "gitlab-token")
+	}
+	if len(tokenVolume.Secret.Items) != 1 || tokenVolume.Secret.Items[0].Key != GitLabTokenSecretKey {
+		t.Errorf("Token volume items = %+v, want single %q item", tokenVolume.Secret.Items, GitLabTokenSecretKey)
 	}
 }
 

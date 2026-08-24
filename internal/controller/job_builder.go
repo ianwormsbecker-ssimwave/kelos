@@ -13,6 +13,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	kelos "github.com/kelos-dev/kelos/api/v1alpha2"
+	"github.com/kelos-dev/kelos/internal/gitprovider"
 )
 
 const (
@@ -108,7 +109,24 @@ const (
 	// GitHubTokenMountPath + "/" + GitHubTokenSecretKey.
 	GitHubTokenSecretKey = "GITHUB_TOKEN"
 
+	// GitLabTokenVolumeName is the GitLab counterpart of
+	// GitHubTokenVolumeName, used for workspaces hosted on GitLab.com.
+	GitLabTokenVolumeName = "kelos-gitlab-token"
+
+	// GitLabTokenMountPath is the directory where the workspace token
+	// Secret is mounted for GitLab.com workspaces.
+	GitLabTokenMountPath = "/kelos/gitlab-token"
+
+	// GitLabTokenSecretKey is the Secret key under which the GitLab
+	// token is stored.
+	GitLabTokenSecretKey = "GITLAB_TOKEN"
+
 	gitCredentialDefaultUsername = "x-access-token"
+
+	// gitlabCredentialUsername is the username GitLab expects for HTTPS
+	// token authentication. It works for personal, project, and group
+	// access tokens as well as OAuth tokens.
+	gitlabCredentialUsername = "oauth2"
 
 	// AgentUID is the UID shared between the git-clone init
 	// container and the agent container. Custom agent images must run
@@ -396,10 +414,12 @@ func (b *JobBuilder) buildAgentJob(task *kelos.Task, workspace *kelos.WorkspaceS
 
 	var workspaceEnvVars []corev1.EnvVar
 	var isEnterprise bool
+	gitAuth := githubWorkspaceGitAuth
 	effectiveRemotes := effectiveWorkspaceRemotes(workspace)
 	if workspace != nil {
+		gitAuth = workspaceGitAuthFor(workspace.Repo)
 		host, _, _ := parseGitHubRepo(workspace.Repo)
-		isEnterprise = host != "" && host != "github.com"
+		isEnterprise = !gitAuth.isGitLab() && host != "" && host != "github.com"
 
 		if isEnterprise {
 			// Set GH_HOST for GitHub Enterprise so that gh CLI targets the correct host.
@@ -431,49 +451,79 @@ func (b *JobBuilder) buildAgentJob(task *kelos.Task, workspace *kelos.WorkspaceS
 	}
 
 	if workspace != nil && workspace.SecretRef != nil {
-		secretKeyRef := &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{
-				Name: workspace.SecretRef.Name,
-			},
-			Key: GitHubTokenSecretKey,
-		}
-		githubTokenEnv := corev1.EnvVar{
-			Name:      "GITHUB_TOKEN",
-			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: secretKeyRef},
-		}
-		envVars = append(envVars, githubTokenEnv)
-		workspaceEnvVars = append(workspaceEnvVars, githubTokenEnv)
+		if gitAuth.isGitLab() {
+			// GitLab tokens are exposed as GITLAB_TOKEN for glab and other
+			// GitLab tooling. GITHUB_TOKEN is still populated when the
+			// Secret has that key so workspaces that predate GitLab support
+			// keep working; both keys are optional so a Secret holding
+			// either one starts the pod.
+			gitlabTokenEnv := corev1.EnvVar{
+				Name: "GITLAB_TOKEN",
+				ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: workspace.SecretRef.Name},
+					Key:                  GitLabTokenSecretKey,
+					Optional:             ptr.To(true),
+				}},
+			}
+			legacyTokenEnv := corev1.EnvVar{
+				Name: "GITHUB_TOKEN",
+				ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: workspace.SecretRef.Name},
+					Key:                  GitHubTokenSecretKey,
+					Optional:             ptr.To(true),
+				}},
+			}
+			tokenFileEnv := corev1.EnvVar{
+				Name:  "KELOS_GITLAB_TOKEN_FILE",
+				Value: gitAuth.tokenFile(),
+			}
+			envVars = append(envVars, gitlabTokenEnv, legacyTokenEnv, tokenFileEnv)
+			workspaceEnvVars = append(workspaceEnvVars, gitlabTokenEnv, legacyTokenEnv, tokenFileEnv)
+		} else {
+			secretKeyRef := &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: workspace.SecretRef.Name,
+				},
+				Key: GitHubTokenSecretKey,
+			}
+			githubTokenEnv := corev1.EnvVar{
+				Name:      "GITHUB_TOKEN",
+				ValueFrom: &corev1.EnvVarSource{SecretKeyRef: secretKeyRef},
+			}
+			envVars = append(envVars, githubTokenEnv)
+			workspaceEnvVars = append(workspaceEnvVars, githubTokenEnv)
 
-		// gh CLI uses GH_TOKEN for github.com and GH_ENTERPRISE_TOKEN for
-		// GitHub Enterprise Server hosts.
-		ghTokenName := "GH_TOKEN"
-		if isEnterprise {
-			ghTokenName = "GH_ENTERPRISE_TOKEN"
-		}
-		ghTokenEnv := corev1.EnvVar{
-			Name:      ghTokenName,
-			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: secretKeyRef},
-		}
-		envVars = append(envVars, ghTokenEnv)
-		workspaceEnvVars = append(workspaceEnvVars, ghTokenEnv)
+			// gh CLI uses GH_TOKEN for github.com and GH_ENTERPRISE_TOKEN for
+			// GitHub Enterprise Server hosts.
+			ghTokenName := "GH_TOKEN"
+			if isEnterprise {
+				ghTokenName = "GH_ENTERPRISE_TOKEN"
+			}
+			ghTokenEnv := corev1.EnvVar{
+				Name:      ghTokenName,
+				ValueFrom: &corev1.EnvVarSource{SecretKeyRef: secretKeyRef},
+			}
+			envVars = append(envVars, ghTokenEnv)
+			workspaceEnvVars = append(workspaceEnvVars, ghTokenEnv)
 
-		// Point gh CLI at a clean config directory on the workspace volume
-		// so it does not read stale auth from the container image.
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "GH_CONFIG_DIR",
-			Value: GHConfigDir,
-		})
+			// Point gh CLI at a clean config directory on the workspace volume
+			// so it does not read stale auth from the container image.
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "GH_CONFIG_DIR",
+				Value: GHConfigDir,
+			})
 
-		// Expose the mounted token file path so the git credential
-		// helper and the gh wrapper script can re-read the token on
-		// every invocation, picking up controller-side refreshes
-		// without a pod restart.
-		tokenFileEnv := corev1.EnvVar{
-			Name:  "KELOS_GITHUB_TOKEN_FILE",
-			Value: GitHubTokenMountPath + "/" + GitHubTokenSecretKey,
+			// Expose the mounted token file path so the git credential
+			// helper and the gh wrapper script can re-read the token on
+			// every invocation, picking up controller-side refreshes
+			// without a pod restart.
+			tokenFileEnv := corev1.EnvVar{
+				Name:  "KELOS_GITHUB_TOKEN_FILE",
+				Value: GitHubTokenMountPath + "/" + GitHubTokenSecretKey,
+			}
+			envVars = append(envVars, tokenFileEnv)
+			workspaceEnvVars = append(workspaceEnvVars, tokenFileEnv)
 		}
-		envVars = append(envVars, tokenFileEnv)
-		workspaceEnvVars = append(workspaceEnvVars, tokenFileEnv)
 	}
 
 	backoffLimit := int32(1)
@@ -519,20 +569,20 @@ func (b *JobBuilder) buildAgentJob(task *kelos.Task, workspace *kelos.WorkspaceS
 		workspaceVolumeMounts := []corev1.VolumeMount{volumeMount}
 		if workspace.SecretRef != nil {
 			volumes = append(volumes, corev1.Volume{
-				Name: GitHubTokenVolumeName,
+				Name: gitAuth.volumeName,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName: workspace.SecretRef.Name,
 						Items: []corev1.KeyToPath{
-							{Key: GitHubTokenSecretKey, Path: GitHubTokenSecretKey},
+							{Key: gitAuth.secretKey, Path: gitAuth.secretKey},
 						},
 						Optional: ptr.To(true),
 					},
 				},
 			})
 			workspaceVolumeMounts = append(workspaceVolumeMounts, corev1.VolumeMount{
-				Name:      GitHubTokenVolumeName,
-				MountPath: GitHubTokenMountPath,
+				Name:      gitAuth.volumeName,
+				MountPath: gitAuth.mountPath,
 				ReadOnly:  true,
 			})
 		}
@@ -557,13 +607,13 @@ func (b *JobBuilder) buildAgentJob(task *kelos.Task, workspace *kelos.WorkspaceS
 		if commitRef {
 			credentialHelper := ""
 			if workspace.SecretRef != nil {
-				credentialHelper = gitCredentialHelper()
+				credentialHelper = gitAuth.credentialHelper()
 			}
-			initContainer.Command = []string{"sh", "-c", buildCommitRefCheckoutScript(credentialHelper)}
+			initContainer.Command = []string{"sh", "-c", buildCommitRefCheckoutScript(credentialHelper, gitAuth.username)}
 			initContainer.Args = []string{"--", workspace.Repo, targetPath, workspace.Ref}
 		} else if workspace.SecretRef != nil {
-			credentialHelper := gitCredentialHelper()
-			credentialConfig := workspaceGitCredentialConfigScript(credentialHelper)
+			credentialHelper := gitAuth.credentialHelper()
+			credentialConfig := workspaceGitCredentialConfigScript(credentialHelper, gitAuth.username)
 			// Clear inherited credential helpers with an empty -c credential.helper=
 			// before setting the workspace helper, then persist the same
 			// configuration into the repo so the agent container is
@@ -572,7 +622,7 @@ func (b *JobBuilder) buildAgentJob(task *kelos.Task, workspace *kelos.WorkspaceS
 				fmt.Sprintf(
 					`git -c credential.helper= -c credential.helper='%s' -c credential.username=%s "$@" && { `+
 						`%s; }`,
-					credentialHelper, gitCredentialDefaultUsername, credentialConfig,
+					credentialHelper, gitAuth.username, credentialConfig,
 				),
 			}
 			initContainer.Args = append([]string{"--"}, cloneArgs...)
@@ -610,10 +660,10 @@ func (b *JobBuilder) buildAgentJob(task *kelos.Task, workspace *kelos.WorkspaceS
 		if task.Spec.Branch != "" {
 			remoteGit := "git"
 			if workspace.SecretRef != nil {
-				credHelper := gitCredentialHelper()
+				credHelper := gitAuth.credentialHelper()
 				remoteGit = fmt.Sprintf(
 					`git -c credential.helper= -c credential.helper='%s' -c credential.username=%s`,
-					credHelper, gitCredentialDefaultUsername,
+					credHelper, gitAuth.username,
 				)
 			}
 			branchSetupScript := fmt.Sprintf(
@@ -1034,12 +1084,12 @@ func isFullGitCommitSHA(ref string) bool {
 	return true
 }
 
-func buildCommitRefCheckoutScript(credentialHelper string) string {
+func buildCommitRefCheckoutScript(credentialHelper, username string) string {
 	fetchCmd := `git -C "$target" fetch --depth 1 origin "$ref"`
 	if credentialHelper != "" {
 		fetchCmd = fmt.Sprintf(
 			`git -C "$target" -c credential.helper= -c credential.helper='%s' -c credential.username=%s fetch --depth 1 origin "$ref"`,
-			credentialHelper, gitCredentialDefaultUsername,
+			credentialHelper, username,
 		)
 	}
 
@@ -1058,40 +1108,86 @@ func buildCommitRefCheckoutScript(credentialHelper string) string {
 		lines = append(lines,
 			`git -C "$target" config --unset-all credential.helper 2>/dev/null || true`,
 			fmt.Sprintf(`git -C "$target" config --add credential.helper '%s'`, credentialHelper),
-			fmt.Sprintf(`git -C "$target" config credential.username %s`, gitCredentialDefaultUsername),
+			fmt.Sprintf(`git -C "$target" config credential.username %s`, username),
 		)
 	}
 
 	return strings.Join(lines, "\n")
 }
 
-// gitCredentialHelper returns the inline git credential helper that resolves
-// the GitHub token by reading the mounted token file on each invocation,
-// falling back to the inherited $GITHUB_TOKEN env var when the file is not
-// present. Reading the file each time lets git pick up controller-side
-// token refreshes (e.g. for GitHub App installation tokens that expire
-// in ~1h) without restarting the pod. Git's credential.username configuration
-// supplies the default username separately so a username in the remote URL
-// takes precedence.
-func gitCredentialHelper() string {
-	tokenFile := GitHubTokenMountPath + "/" + GitHubTokenSecretKey
-	return gitCredentialHelperForTokenFile(tokenFile)
+// workspaceGitAuth captures the provider-specific wiring for workspace git
+// credentials: which Secret key holds the token, where the token file is
+// mounted, the default username git presents, and the env var expression
+// the credential helper falls back to when the token file is absent.
+type workspaceGitAuth struct {
+	volumeName  string
+	mountPath   string
+	secretKey   string
+	username    string
+	fallbackEnv string
 }
 
-func gitCredentialHelperForTokenFile(tokenFile string) string {
+var githubWorkspaceGitAuth = workspaceGitAuth{
+	volumeName:  GitHubTokenVolumeName,
+	mountPath:   GitHubTokenMountPath,
+	secretKey:   GitHubTokenSecretKey,
+	username:    gitCredentialDefaultUsername,
+	fallbackEnv: "$GITHUB_TOKEN",
+}
+
+// gitlabWorkspaceGitAuth falls back to $GITHUB_TOKEN after $GITLAB_TOKEN so
+// that pre-existing GitLab workspaces that store their token under the
+// GITHUB_TOKEN Secret key keep working.
+var gitlabWorkspaceGitAuth = workspaceGitAuth{
+	volumeName:  GitLabTokenVolumeName,
+	mountPath:   GitLabTokenMountPath,
+	secretKey:   GitLabTokenSecretKey,
+	username:    gitlabCredentialUsername,
+	fallbackEnv: "${GITLAB_TOKEN:-$GITHUB_TOKEN}",
+}
+
+// workspaceGitAuthFor returns the git credential wiring for the workspace
+// repository. GitLab.com repositories authenticate with a GITLAB_TOKEN and
+// the "oauth2" username; everything else keeps the GitHub wiring, which also
+// covers generic hosts via the username-in-URL escape hatch.
+func workspaceGitAuthFor(repoURL string) workspaceGitAuth {
+	if gitprovider.IsGitLab(repoURL) {
+		return gitlabWorkspaceGitAuth
+	}
+	return githubWorkspaceGitAuth
+}
+
+func (a workspaceGitAuth) isGitLab() bool {
+	return a.secretKey == GitLabTokenSecretKey
+}
+
+// tokenFile is the path of the mounted token file the credential helper and
+// agent tooling re-read on each use.
+func (a workspaceGitAuth) tokenFile() string {
+	return a.mountPath + "/" + a.secretKey
+}
+
+// credentialHelper returns the inline git credential helper that resolves
+// the token by reading the mounted token file on each invocation, falling
+// back to the inherited token env var when the file is not present. Reading
+// the file each time lets git pick up controller-side token refreshes (e.g.
+// for GitHub App installation tokens that expire in ~1h) without restarting
+// the pod. Git's credential.username configuration supplies the default
+// username separately so a username in the remote URL takes precedence.
+func (a workspaceGitAuth) credentialHelper() string {
 	return fmt.Sprintf(
-		`!f() { if [ -r %q ]; then echo "password=$(cat %q)"; else echo "password=$GITHUB_TOKEN"; fi; }; f`,
-		tokenFile, tokenFile,
+		`!f() { if [ -r %q ]; then echo "password=$(cat %q)"; else echo "password=%s"; fi; }; f`,
+		a.tokenFile(), a.tokenFile(), a.fallbackEnv,
 	)
 }
 
-func workspaceGitCredentialConfigScript(credentialHelper string) string {
+func workspaceGitCredentialConfigScript(credentialHelper, username string) string {
 	return fmt.Sprintf(
 		`git -C %s/repo config --unset-all credential.helper 2>/dev/null || true; `+
 			`git -C %s/repo config --add credential.helper '%s' && `+
 			`git -C %s/repo config credential.username %s`,
 		WorkspaceMountPath, WorkspaceMountPath, credentialHelper,
-		WorkspaceMountPath, gitCredentialDefaultUsername,
+		WorkspaceMountPath, username,
 	)
 }
 

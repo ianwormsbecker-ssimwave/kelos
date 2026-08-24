@@ -648,11 +648,11 @@ Notes:
 
 ### Workspace Authentication
 
-The workspace secret referenced by `spec.secretRef.name` supports two authentication methods:
+The workspace secret referenced by `spec.secretRef.name` supports the following authentication methods:
 
 **Personal Access Token (PAT):**
 
-The secret contains a single key:
+For GitHub repositories the secret contains a single key:
 
 | Key | Description |
 |-----|-------------|
@@ -663,8 +663,29 @@ kubectl create secret generic github-token \
   --from-literal=GITHUB_TOKEN=<your-pat>
 ```
 
-For repositories that require a username with PAT authentication, include the
-username in `spec.repo` and store the PAT in the Secret's `GITHUB_TOKEN` key:
+**GitLab.com token:**
+
+For repositories hosted on GitLab.com, store the token under the
+`GITLAB_TOKEN` key instead:
+
+| Key | Description |
+|-----|-------------|
+| `GITLAB_TOKEN` | Personal, project, or group access token for HTTPS git authentication |
+
+```bash
+kubectl create secret generic gitlab-token \
+  --from-literal=GITLAB_TOKEN=<your-token>
+```
+
+Kelos detects GitLab.com from the `spec.repo` host and authenticates git with
+the `oauth2` username. The token is also exposed to the agent as the
+`GITLAB_TOKEN` environment variable. GitLab.com workspaces that store their
+token under the `GITHUB_TOKEN` key continue to work. Self-managed GitLab
+instances are not auto-detected; use the username-in-URL form below.
+
+For repositories on other hosts that require a username with PAT
+authentication, include the username in `spec.repo` and store the PAT in the
+Secret's `GITHUB_TOKEN` key:
 
 ```yaml
 spec:
@@ -674,8 +695,8 @@ spec:
 ```
 
 Kelos preserves a username included in the repository URL. When the URL omits
-the username, Kelos uses `x-access-token`, which is compatible with GitHub PATs
-and GitHub App installation tokens.
+the username, Kelos uses `x-access-token` (compatible with GitHub PATs and
+GitHub App installation tokens), or `oauth2` for GitLab.com repositories.
 
 **GitHub App (recommended for production/org use):**
 
