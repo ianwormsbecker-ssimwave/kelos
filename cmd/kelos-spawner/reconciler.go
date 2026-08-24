@@ -82,7 +82,24 @@ func runOnce(ctx context.Context, cl client.Client, key types.NamespacedName, cf
 		return 0, fmt.Errorf("fetching TaskSpawner after cycle: %w", err)
 	}
 
-	if reportingEnabled(&ts) || checksReportingEnabled(&ts) {
+	if gitlabReportingEnabled(&ts) {
+		if cfg.GitLabToken == "" {
+			return 0, fmt.Errorf("GitLab reporting is enabled on TaskSpawner %s but no GitLab token is configured", ts.Name)
+		}
+		reporter := &reporting.TaskReporter{
+			Client: cl,
+			Reporter: &reporting.GitLabReporter{
+				Project:  cfg.GitLabProject,
+				ItemKind: gitlabReportingItemKind(&ts),
+				Token:    cfg.GitLabToken,
+				BaseURL:  cfg.GitLabAPIBaseURL,
+			},
+			CommentAnnotations: reporting.GitLabCommentAnnotations,
+		}
+		if err := runReportingCycle(ctx, cl, key, reporter); err != nil {
+			return 0, err
+		}
+	} else if reportingEnabled(&ts) || checksReportingEnabled(&ts) {
 		if cfg.TokenResolver == nil {
 			return 0, fmt.Errorf("GitHub reporting is enabled but no token resolver is configured")
 		}

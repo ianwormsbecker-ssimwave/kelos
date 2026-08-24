@@ -189,8 +189,9 @@ func (r *GitHubReporter) CreateComment(ctx context.Context, number int, body str
 	return result.ID, nil
 }
 
-// UpdateComment updates an existing GitHub comment by its ID.
-func (r *GitHubReporter) UpdateComment(ctx context.Context, commentID int64, body string) error {
+// UpdateComment updates an existing GitHub comment by its ID. The number
+// parameter is unused: GitHub's comment API addresses comments repo-wide.
+func (r *GitHubReporter) UpdateComment(ctx context.Context, _ int, commentID int64, body string) error {
 	url := fmt.Sprintf("%s/repos/%s/%s/issues/comments/%s", r.baseURL(), r.Owner, r.Repo, strconv.FormatInt(commentID, 10))
 
 	payload, err := json.Marshal(createCommentRequest{Body: body})

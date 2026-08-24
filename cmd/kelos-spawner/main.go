@@ -644,10 +644,15 @@ func sourceAnnotations(ts *kelos.TaskSpawner, item source.WorkItem) map[string]s
 		if item.Kind == "MR" {
 			kind = "merge-request"
 		}
-		return map[string]string{
+		annotations := map[string]string{
 			reporting.AnnotationSourceKind:   kind,
 			reporting.AnnotationSourceNumber: strconv.Itoa(item.Number),
 		}
+		if gitlabReportingEnabled(ts) {
+			annotations[reporting.AnnotationGitLabReporting] = "enabled"
+			annotations[reporting.AnnotationGitLabCommentMode] = string(resolvedGitLabCommentMode(ts))
+		}
+		return annotations
 	}
 
 	if ts.Spec.When.GitHubIssues == nil && ts.Spec.When.GitHubPullRequests == nil {
@@ -711,6 +716,42 @@ func resolvedCommentMode(ts *kelos.TaskSpawner) kelos.GitHubCommentMode {
 		return rep.Comments.Mode
 	}
 	return kelos.GitHubCommentModePerTask
+}
+
+// gitlabReportingEnabled returns true when GitLab note reporting is
+// configured on the TaskSpawner's GitLab source.
+func gitlabReportingEnabled(ts *kelos.TaskSpawner) bool {
+	if ts.Spec.When.GitLabIssues != nil && ts.Spec.When.GitLabIssues.Reporting != nil {
+		return ts.Spec.When.GitLabIssues.Reporting.Comments != nil
+	}
+	if ts.Spec.When.GitLabMergeRequests != nil && ts.Spec.When.GitLabMergeRequests.Reporting != nil {
+		return ts.Spec.When.GitLabMergeRequests.Reporting.Comments != nil
+	}
+	return false
+}
+
+// resolvedGitLabCommentMode returns the configured GitLab note mode. An empty
+// Comments configuration retains PerTask behavior.
+func resolvedGitLabCommentMode(ts *kelos.TaskSpawner) kelos.GitLabCommentMode {
+	var rep *kelos.GitLabReporting
+	if ts.Spec.When.GitLabIssues != nil {
+		rep = ts.Spec.When.GitLabIssues.Reporting
+	} else if ts.Spec.When.GitLabMergeRequests != nil {
+		rep = ts.Spec.When.GitLabMergeRequests.Reporting
+	}
+	if rep != nil && rep.Comments != nil && rep.Comments.Mode != "" {
+		return rep.Comments.Mode
+	}
+	return kelos.GitLabCommentModePerTask
+}
+
+// gitlabReportingItemKind returns the GitLab notes API resource for the
+// TaskSpawner's GitLab source.
+func gitlabReportingItemKind(ts *kelos.TaskSpawner) string {
+	if ts.Spec.When.GitLabMergeRequests != nil {
+		return "merge_requests"
+	}
+	return "issues"
 }
 
 // checksReportingEnabled returns true when GitHub Checks API reporting is

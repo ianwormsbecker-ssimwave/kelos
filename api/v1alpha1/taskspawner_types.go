@@ -353,6 +353,38 @@ type FilePatterns struct {
 	Exclude []string `json:"exclude,omitempty"`
 }
 
+// GitLabCommentMode controls how task status notes are reused.
+type GitLabCommentMode string
+
+const (
+	// GitLabCommentModePerTask creates one status note for each Task and
+	// updates it as that Task's phase changes.
+	GitLabCommentModePerTask GitLabCommentMode = "PerTask"
+
+	// GitLabCommentModeSticky maintains one status note per TaskSpawner and
+	// originating issue or merge request, updating it across Tasks.
+	GitLabCommentModeSticky GitLabCommentMode = "Sticky"
+)
+
+// GitLabReporting configures status reporting back to GitLab.
+type GitLabReporting struct {
+	// Comments configures task status notes on the originating GitLab issue
+	// or merge request. When nil, no notes are posted.
+	// +optional
+	Comments *GitLabCommentsReporting `json:"comments,omitempty"`
+}
+
+// GitLabCommentsReporting configures GitLab task status note reporting.
+type GitLabCommentsReporting struct {
+	// Mode controls whether notes are created per Task or reused across
+	// Tasks from the same TaskSpawner and originating issue or merge request.
+	// Defaults to PerTask.
+	// +optional
+	// +kubebuilder:default=PerTask
+	// +kubebuilder:validation:Enum=PerTask;Sticky
+	Mode GitLabCommentMode `json:"mode,omitempty"`
+}
+
 // GitLabIssues discovers issues from a GitLab.com project.
 // By default the project path is derived from the workspace's repo URL
 // specified in taskTemplate.workspaceRef. Set the Repo field to override
@@ -399,6 +431,10 @@ type GitLabIssues struct {
 	// are scheduled last. When empty, items are processed in discovery order.
 	// +optional
 	PriorityLabels []string `json:"priorityLabels,omitempty"`
+
+	// Reporting configures status reporting back to the originating GitLab issue.
+	// +optional
+	Reporting *GitLabReporting `json:"reporting,omitempty"`
 
 	// PollInterval is how often this source is polled (e.g., "30s", "5m").
 	// When empty, a default of 5m is used.
@@ -458,6 +494,11 @@ type GitLabMergeRequests struct {
 	// are scheduled last. When empty, items are processed in discovery order.
 	// +optional
 	PriorityLabels []string `json:"priorityLabels,omitempty"`
+
+	// Reporting configures status reporting back to the originating GitLab
+	// merge request.
+	// +optional
+	Reporting *GitLabReporting `json:"reporting,omitempty"`
 
 	// PollInterval is how often this source is polled (e.g., "30s", "5m").
 	// When empty, a default of 5m is used.

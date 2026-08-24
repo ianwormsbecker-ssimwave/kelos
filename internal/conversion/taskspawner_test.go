@@ -276,7 +276,10 @@ func TestTaskSpawnerConvert_GitLabSourcesRoundTrip(t *testing.T) {
 					ExcludeAuthors: []string{"bot"},
 					Draft:          &draft,
 					PriorityLabels: []string{"urgent"},
-					PollInterval:   "45s",
+					Reporting: &v1alpha2.GitLabReporting{
+						Comments: &v1alpha2.GitLabCommentsReporting{Mode: v1alpha2.GitLabCommentModeSticky},
+					},
+					PollInterval: "45s",
 				},
 			},
 		},
@@ -300,6 +303,9 @@ func TestTaskSpawnerConvert_GitLabSourcesRoundTrip(t *testing.T) {
 		gl.PollInterval != "45s" || gl.Draft == nil || *gl.Draft ||
 		len(gl.Labels) != 1 || len(gl.ExcludeLabels) != 1 || len(gl.ExcludeAuthors) != 1 || len(gl.PriorityLabels) != 1 {
 		t.Errorf("gitlabMergeRequests fields not preserved: %#v", gl)
+	}
+	if gl.Reporting == nil || gl.Reporting.Comments == nil || gl.Reporting.Comments.Mode != v1alpha2.GitLabCommentModeSticky {
+		t.Errorf("gitlabMergeRequests reporting not preserved: %#v", gl.Reporting)
 	}
 
 	hub.Spec.When = v1alpha2.When{
