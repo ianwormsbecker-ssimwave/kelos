@@ -26,6 +26,17 @@ RUN ARCH=$(dpkg --print-architecture) \
     && tar -C /usr/local -xzf "/tmp/${TARBALL}" \
     && rm "/tmp/${TARBALL}" "/tmp/${TARBALL}.sha256"
 
+ARG GLAB_VERSION=1.114.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && TARBALL="glab_${GLAB_VERSION}_linux_${ARCH}.tar.gz" \
+    && BASE_URL="https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/${GLAB_VERSION}" \
+    && curl -fsSL -o "/tmp/${TARBALL}" "${BASE_URL}/${TARBALL}" \
+    && curl -fsSL -o /tmp/glab-checksums.txt "${BASE_URL}/checksums.txt" \
+    && (cd /tmp && grep " ${TARBALL}$" glab-checksums.txt | sha256sum -c -) \
+    && tar -C /tmp -xzf "/tmp/${TARBALL}" bin/glab \
+    && install -m 755 /tmp/bin/glab /usr/bin/glab \
+    && rm -rf "/tmp/${TARBALL}" /tmp/glab-checksums.txt /tmp/bin
+
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 ARG GEMINI_CLI_VERSION=0.55.1
@@ -36,6 +47,9 @@ RUN chmod +x /kelos_entrypoint.sh
 
 COPY hack/agent-gh-wrapper.sh /usr/local/bin/gh
 RUN chmod +x /usr/local/bin/gh
+
+COPY hack/agent-glab-wrapper.sh /usr/local/bin/glab
+RUN chmod +x /usr/local/bin/glab
 
 ARG TARGETARCH
 COPY bin/kelos-capture-linux-${TARGETARCH} /kelos/kelos-capture

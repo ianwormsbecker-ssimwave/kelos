@@ -205,6 +205,10 @@ the token is whatever the workspace Secret holds — but Secret rotations
 still propagate to `$KELOS_GITLAB_TOKEN_FILE` via the kubelet sync. The
 injected git credential helper reads that file on each invocation, falling
 back to `$GITLAB_TOKEN` (then `$GITHUB_TOKEN`) when the file is absent.
+The reference images bundle the `glab` CLI behind a wrapper
+([`hack/agent-glab-wrapper.sh`](../hack/agent-glab-wrapper.sh) at
+`/usr/local/bin/glab`) that exports `GITLAB_TOKEN` from the file on each
+invocation — custom images can copy or adapt it.
 
 ## Output Capture
 

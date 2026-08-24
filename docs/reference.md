@@ -679,9 +679,10 @@ kubectl create secret generic gitlab-token \
 
 Kelos detects GitLab.com from the `spec.repo` host and authenticates git with
 the `oauth2` username. The token is also exposed to the agent as the
-`GITLAB_TOKEN` environment variable. GitLab.com workspaces that store their
-token under the `GITHUB_TOKEN` key continue to work. Self-managed GitLab
-instances are not auto-detected; use the username-in-URL form below.
+`GITLAB_TOKEN` environment variable, and the bundled agent images include the
+GitLab `glab` CLI authenticated with it. GitLab.com workspaces that store
+their token under the `GITHUB_TOKEN` key continue to work. Self-managed
+GitLab instances are not auto-detected; use the username-in-URL form below.
 
 For repositories on other hosts that require a username with PAT
 authentication, include the username in `spec.repo` and store the PAT in the
