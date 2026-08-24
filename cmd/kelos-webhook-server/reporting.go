@@ -24,6 +24,11 @@ type reportingConfig struct {
 	TokenResolver    func(context.Context) (string, error)
 	GitHubAPIBaseURL string
 	GitHubAppID      string
+	// GitLabToken and GitLabAPIBaseURL configure GitLab note reporting; the
+	// per-Task project comes from the source-project annotation stamped by
+	// the webhook handler.
+	GitLabToken      string
+	GitLabAPIBaseURL string
 }
 
 // reportingReconciler watches Tasks with GitHub reporting annotations
@@ -45,9 +50,16 @@ func (r *reportingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if task.Annotations == nil ||
-		(task.Annotations[reporting.AnnotationGitHubReporting] != "enabled" &&
-			task.Annotations[reporting.AnnotationGitHubChecks] != "enabled") {
+	if task.Annotations == nil {
+		return ctrl.Result{}, nil
+	}
+
+	if task.Annotations[reporting.AnnotationGitLabReporting] == "enabled" {
+		return r.reconcileGitLab(ctx, &task)
+	}
+
+	if task.Annotations[reporting.AnnotationGitHubReporting] != "enabled" &&
+		task.Annotations[reporting.AnnotationGitHubChecks] != "enabled" {
 		return ctrl.Result{}, nil
 	}
 
@@ -89,6 +101,45 @@ func (r *reportingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if err := reporter.ReportTaskStatus(ctx, &task); err != nil {
+		log.Error(err, "Reporting task status", "task", task.Name)
+		return ctrl.Result{}, fmt.Errorf("reporting task status: %w", err)
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// reconcileGitLab reports the Task's status as a note on the originating
+// GitLab issue or merge request.
+func (r *reportingReconciler) reconcileGitLab(ctx context.Context, task *kelos.Task) (ctrl.Result, error) {
+	log := ctrl.Log.WithName("reporting")
+
+	if r.config.GitLabToken == "" {
+		log.Info("Skipping GitLab reporting: no GitLab token configured", "task", task.Name)
+		return ctrl.Result{}, nil
+	}
+	project := task.Annotations[reporting.AnnotationSourceProject]
+	if project == "" {
+		log.Info("Skipping GitLab reporting: missing source project annotation", "task", task.Name)
+		return ctrl.Result{}, nil
+	}
+	itemKind := "issues"
+	if task.Annotations[reporting.AnnotationSourceKind] == "merge-request" {
+		itemKind = "merge_requests"
+	}
+
+	reporter := &reporting.TaskReporter{
+		Client: r.Client,
+		Reporter: &reporting.GitLabReporter{
+			Project:  project,
+			ItemKind: itemKind,
+			Token:    r.config.GitLabToken,
+			BaseURL:  r.config.GitLabAPIBaseURL,
+		},
+		CommentAnnotations: reporting.GitLabCommentAnnotations,
+		Cache:              r.cache,
+	}
+
+	if err := reporter.ReportTaskStatus(ctx, task); err != nil {
 		log.Error(err, "Reporting task status", "task", task.Name)
 		return ctrl.Result{}, fmt.Errorf("reporting task status: %w", err)
 	}
@@ -138,5 +189,7 @@ func reportingEnabled(obj client.Object) bool {
 		return false
 	}
 	a := obj.GetAnnotations()
-	return a[reporting.AnnotationGitHubReporting] == "enabled" || a[reporting.AnnotationGitHubChecks] == "enabled"
+	return a[reporting.AnnotationGitHubReporting] == "enabled" ||
+		a[reporting.AnnotationGitHubChecks] == "enabled" ||
+		a[reporting.AnnotationGitLabReporting] == "enabled"
 }

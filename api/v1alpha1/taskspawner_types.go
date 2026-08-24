@@ -37,6 +37,10 @@ type When struct {
 	// +optional
 	GitLabMergeRequests *GitLabMergeRequests `json:"gitlabMergeRequests,omitempty"`
 
+	// GitLabWebhook triggers task spawning on GitLab webhook events.
+	// +optional
+	GitLabWebhook *GitLabWebhook `json:"gitlabWebhook,omitempty"`
+
 	// Cron triggers task spawning on a cron schedule.
 	// +optional
 	Cron *Cron `json:"cron,omitempty"`
@@ -504,6 +508,108 @@ type GitLabMergeRequests struct {
 	// When empty, a default of 5m is used.
 	// +optional
 	PollInterval string `json:"pollInterval,omitempty"`
+}
+
+// GitLabWebhook configures matching for GitLab webhook events.
+type GitLabWebhook struct {
+	// Events is the list of GitLab event types to listen for, matching the
+	// webhook payload's object_kind: e.g. "push", "tag_push", "issue",
+	// "merge_request", "note", "pipeline", "release".
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=20
+	Events []string `json:"events"`
+
+	// Project restricts webhooks to a specific project (full path, e.g.
+	// "group/subgroup/project"). If empty, webhooks from any project are
+	// accepted.
+	// +optional
+	Project string `json:"project,omitempty"`
+
+	// ExcludeAuthors excludes webhook events triggered by any of these
+	// usernames. This is applied before filter evaluation and takes
+	// precedence over filter-level Author matches.
+	// +optional
+	ExcludeAuthors []string `json:"excludeAuthors,omitempty"`
+
+	// Filters refine which events match. If multiple filters apply to the
+	// same event type, any matching filter accepts the event (OR semantics).
+	// If empty, all events in the Events list match.
+	// +optional
+	Filters []GitLabWebhookFilter `json:"filters,omitempty"`
+
+	// Reporting configures status reporting back to the originating GitLab
+	// issue or merge request.
+	// +optional
+	Reporting *GitLabReporting `json:"reporting,omitempty"`
+}
+
+// NoteOn values scope note-event filters to a specific subject.
+const (
+	// NoteOnIssue matches note events posted on issues.
+	NoteOnIssue = "Issue"
+	// NoteOnMergeRequest matches note events posted on merge requests.
+	NoteOnMergeRequest = "MergeRequest"
+)
+
+// GitLabWebhookFilter refines which GitLab webhook events match.
+type GitLabWebhookFilter struct {
+	// Event is the GitLab event type this filter applies to (object_kind).
+	// +kubebuilder:validation:Required
+	Event string `json:"event"`
+
+	// Action filters by the event's action (e.g. "open", "close", "reopen",
+	// "update", "merge" for issue and merge_request events; "create" for
+	// release events).
+	// +optional
+	Action string `json:"action,omitempty"`
+
+	// Labels requires the issue or merge request to have all of these labels.
+	// +optional
+	Labels []string `json:"labels,omitempty"`
+
+	// ExcludeLabels excludes issues/merge requests with any of these labels.
+	// +optional
+	ExcludeLabels []string `json:"excludeLabels,omitempty"`
+
+	// State filters by the issue or merge request state ("opened", "closed",
+	// "merged").
+	// +optional
+	State string `json:"state,omitempty"`
+
+	// Branch filters push events by branch name and merge_request events by
+	// source branch (exact match or glob, e.g. "main", "release-*").
+	// +optional
+	Branch string `json:"branch,omitempty"`
+
+	// Tag filters tag_push and release events by tag name (exact match or
+	// glob, e.g. "v*").
+	// +optional
+	Tag string `json:"tag,omitempty"`
+
+	// Draft filters merge requests by draft status.
+	// +optional
+	Draft *bool `json:"draft,omitempty"`
+
+	// Author filters by the username of the user who triggered the event.
+	// +optional
+	Author string `json:"author,omitempty"`
+
+	// ExcludeAuthors excludes events triggered by any of these usernames.
+	// +optional
+	ExcludeAuthors []string `json:"excludeAuthors,omitempty"`
+
+	// BodyPattern is a regular expression matched against the note body for
+	// note events, and against the issue or merge request description for
+	// issue and merge_request events.
+	// +optional
+	BodyPattern string `json:"bodyPattern,omitempty"`
+
+	// NoteOn scopes note-event filters to notes on a specific subject:
+	// "Issue" or "MergeRequest". Omit to match notes on both.
+	// +kubebuilder:validation:Enum=Issue;MergeRequest
+	// +optional
+	NoteOn string `json:"noteOn,omitempty"`
 }
 
 // Jira discovers issues from a Jira project.

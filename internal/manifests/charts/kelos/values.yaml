@@ -105,6 +105,24 @@ webhookServer:
         # to avoid externally publishing the metrics endpoint; scrape metrics
         # via a PodMonitor or a separate ClusterIP Service in that case.
         type: ClusterIP
+    gitlab:
+      enabled: false
+      replicas: 1
+      # Secret holding the WEBHOOK_SECRET key: the token GitLab sends in the
+      # X-Gitlab-Token header.
+      secretName: ""
+      # Optional Secret holding a GITLAB_TOKEN key, used to post status notes
+      # back to GitLab when a TaskSpawner configures reporting.
+      gitlabSecretName: ""
+      service:
+        # Service type for the webhook endpoint.
+        # Allowed values: ClusterIP, LoadBalancer, NodePort.
+        # When type is ClusterIP, the Service also exposes the unauthenticated
+        # metrics port (8080) for in-cluster scraping. When type is
+        # LoadBalancer or NodePort, only the webhook port (8443) is exposed
+        # to avoid externally publishing the metrics endpoint; scrape metrics
+        # via a PodMonitor or a separate ClusterIP Service in that case.
+        type: ClusterIP
     linear:
       enabled: false
       replicas: 1

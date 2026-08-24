@@ -46,9 +46,10 @@ func main() {
 		githubAppPrivateKey     string
 		githubAPIBaseURL        string
 		githubTokenFile         string
+		gitlabAPIBaseURL        string
 	)
 
-	flag.StringVar(&source, "source", "", "Webhook source type (github or linear)")
+	flag.StringVar(&source, "source", "", "Webhook source type (github, gitlab, linear, or generic)")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&webhookAddr, "webhook-bind-address", ":8443", "The address the webhook endpoint binds to.")
@@ -59,6 +60,7 @@ func main() {
 	flag.StringVar(&githubAppPrivateKey, "github-app-private-key", "", "GitHub App private key in PEM format (env: GITHUB_APP_PRIVATE_KEY)")
 	flag.StringVar(&githubAPIBaseURL, "github-api-base-url", "", "GitHub API base URL for enterprise servers (env: GITHUB_API_BASE_URL)")
 	flag.StringVar(&githubTokenFile, "github-token-file", "", "Path to file containing GitHub token for reporting.")
+	flag.StringVar(&gitlabAPIBaseURL, "gitlab-api-base-url", "", "GitLab API base URL for status reporting (env: GITLAB_API_BASE_URL; defaults to https://gitlab.com/api/v4)")
 
 	opts, applyVerbosity := logging.SetupZapOptions(flag.CommandLine)
 	flag.Parse()
@@ -86,6 +88,10 @@ func main() {
 	if githubAPIBaseURL == "" {
 		githubAPIBaseURL = os.Getenv("GITHUB_API_BASE_URL")
 	}
+	if gitlabAPIBaseURL == "" {
+		gitlabAPIBaseURL = os.Getenv("GITLAB_API_BASE_URL")
+	}
+	gitlabToken := os.Getenv("GITLAB_TOKEN")
 
 	// Validate source parameter
 	source = strings.ToLower(strings.TrimSpace(source))
@@ -93,13 +99,15 @@ func main() {
 	switch source {
 	case "github":
 		webhookSource = webhook.GitHubSource
+	case "gitlab":
+		webhookSource = webhook.GitLabSource
 	case "linear":
 		webhookSource = webhook.LinearSource
 	case "generic":
 		webhookSource = webhook.GenericSource
 	default:
 		setupLog.Error(fmt.Errorf("invalid source: %s", source),
-			"Source must be 'github', 'linear', or 'generic'")
+			"Source must be 'github', 'gitlab', 'linear', or 'generic'")
 		os.Exit(1)
 	}
 
@@ -203,7 +211,8 @@ func main() {
 	// one webhook server can report against many repositories. Other sources
 	// (linear, generic) never produce GitHub-reporting tasks, so the
 	// reconciler stays disabled there even when GITHUB_TOKEN is set.
-	if webhookSource == webhook.GitHubSource && tokenResolver != nil {
+	switch {
+	case webhookSource == webhook.GitHubSource && tokenResolver != nil:
 		reportingReconciler := &reportingReconciler{
 			Client: mgr.GetClient(),
 			config: reportingConfig{
@@ -217,9 +226,25 @@ func main() {
 			os.Exit(1)
 		}
 		setupLog.Info("Reporting controller enabled")
-	} else if webhookSource == webhook.GitHubSource {
+	case webhookSource == webhook.GitHubSource:
 		setupLog.Info("Reporting controller disabled: no GitHub credentials configured. " +
 			"Set --github-token, --github-app-* flags, or --github-token-file to enable status reporting on Tasks")
+	case webhookSource == webhook.GitLabSource && gitlabToken != "":
+		reportingReconciler := &reportingReconciler{
+			Client: mgr.GetClient(),
+			config: reportingConfig{
+				GitLabToken:      gitlabToken,
+				GitLabAPIBaseURL: gitlabAPIBaseURL,
+			},
+		}
+		if err := reportingReconciler.SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Unable to create reporting controller")
+			os.Exit(1)
+		}
+		setupLog.Info("Reporting controller enabled")
+	case webhookSource == webhook.GitLabSource:
+		setupLog.Info("Reporting controller disabled: no GitLab credentials configured. " +
+			"Set the GITLAB_TOKEN environment variable to enable status reporting on Tasks")
 	}
 
 	// Add health checks

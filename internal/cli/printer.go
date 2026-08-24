@@ -228,6 +228,11 @@ func printTaskSpawnerTable(w io.Writer, spawners []kelos.TaskSpawner, allNamespa
 			if s.Spec.When.GitHubWebhook.Repository != "" {
 				source += " (" + s.Spec.When.GitHubWebhook.Repository + ")"
 			}
+		} else if s.Spec.When.GitLabWebhook != nil {
+			source = "GitLab Webhook"
+			if s.Spec.When.GitLabWebhook.Project != "" {
+				source += " (" + s.Spec.When.GitLabWebhook.Project + ")"
+			}
 		} else if s.Spec.When.LinearWebhook != nil {
 			source = "Linear Webhook"
 		} else if s.Spec.When.GenericWebhook != nil {
@@ -331,6 +336,16 @@ func printTaskSpawnerDetail(w io.Writer, ts *kelos.TaskSpawner) {
 		}
 		if len(gh.ExcludeAuthors) > 0 {
 			printField(w, "Exclude Authors", fmt.Sprintf("%v", gh.ExcludeAuthors))
+		}
+	} else if ts.Spec.When.GitLabWebhook != nil {
+		gl := ts.Spec.When.GitLabWebhook
+		printField(w, "Source", "GitLab Webhook")
+		printField(w, "Events", fmt.Sprintf("%v", gl.Events))
+		if gl.Project != "" {
+			printField(w, "Project", gl.Project)
+		}
+		if len(gl.ExcludeAuthors) > 0 {
+			printField(w, "Exclude Authors", fmt.Sprintf("%v", gl.ExcludeAuthors))
 		}
 	} else if ts.Spec.When.LinearWebhook != nil {
 		lw := ts.Spec.When.LinearWebhook

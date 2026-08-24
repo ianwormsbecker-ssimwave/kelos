@@ -97,3 +97,17 @@ func TestValidateLinearSignature(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateGitLabToken(t *testing.T) {
+	secret := []byte("gitlab-webhook-secret")
+
+	if err := ValidateGitLabToken("gitlab-webhook-secret", secret); err != nil {
+		t.Errorf("ValidateGitLabToken(correct token) = %v, want nil", err)
+	}
+	if err := ValidateGitLabToken("wrong-token", secret); err == nil {
+		t.Error("ValidateGitLabToken(wrong token) = nil, want error")
+	}
+	if err := ValidateGitLabToken("", secret); err == nil {
+		t.Error("ValidateGitLabToken(empty token) = nil, want error")
+	}
+}

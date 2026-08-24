@@ -64,7 +64,7 @@ func isCronBased(ts *kelos.TaskSpawner) bool {
 // Slack uses Socket Mode (outbound WebSocket) handled by the centralized
 // kelos-slack-server, so it follows the same no-deployment pattern.
 func isWebhookBased(ts *kelos.TaskSpawner) bool {
-	return ts.Spec.When.GitHubWebhook != nil || ts.Spec.When.LinearWebhook != nil || ts.Spec.When.GenericWebhook != nil || ts.Spec.When.Slack != nil
+	return ts.Spec.When.GitHubWebhook != nil || ts.Spec.When.GitLabWebhook != nil || ts.Spec.When.LinearWebhook != nil || ts.Spec.When.GenericWebhook != nil || ts.Spec.When.Slack != nil
 }
 
 // Reconcile handles TaskSpawner reconciliation.
