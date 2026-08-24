@@ -117,7 +117,7 @@ func TestUpdateComment(t *testing.T) {
 		BaseURL: server.URL,
 	}
 
-	err := reporter.UpdateComment(context.Background(), 12345, "Updated body")
+	err := reporter.UpdateComment(context.Background(), 42, 12345, "Updated body")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestUpdateCommentError(t *testing.T) {
 		BaseURL: server.URL,
 	}
 
-	err := reporter.UpdateComment(context.Background(), 99999, "body")
+	err := reporter.UpdateComment(context.Background(), 42, 99999, "body")
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}

@@ -163,6 +163,8 @@ spec:
 
 **Template variables:** `{{.Number}}` (issue IID), `{{.Title}}`, `{{.Body}}`, `{{.URL}}`, `{{.Labels}}`, `{{.Comments}}` (non-system notes).
 
+**Status reporting:** Set `reporting.comments: {}` to post status notes (started, succeeded, failed) back to the issue. The default `PerTask` mode creates one note for each Task. Set `reporting.comments.mode: Sticky` to maintain one note per TaskSpawner and issue across Tasks. The workspace Secret's token must be allowed to comment on the project (`api` scope).
+
 ### GitLab Merge Requests
 
 React to merge requests in a GitLab.com project.
@@ -201,7 +203,19 @@ spec:
 
 **Additional filters:** `state` (`open`, `merged`, `closed`, `all`), `author`, `excludeAuthors`, `draft`.
 
-> **Note:** GitLab sources poll GitLab.com. Status reporting back to GitLab and self-managed GitLab instances are not yet supported.
+**Status reporting:** Set `reporting.comments: {}` to post status notes on the merge request as tasks progress, with the same `PerTask`/`Sticky` modes as issues:
+
+```yaml
+spec:
+  when:
+    gitlabMergeRequests:
+      labels: [needs-review]
+      reporting:
+        comments:
+          mode: Sticky   # one status note across Tasks
+```
+
+> **Note:** GitLab sources poll GitLab.com; self-managed GitLab instances are not yet supported. There is no GitLab equivalent of GitHub Check Run reporting — commit status reporting is not implemented.
 
 ### GitHub Webhooks
 

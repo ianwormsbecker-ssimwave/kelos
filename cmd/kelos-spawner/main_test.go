@@ -348,6 +348,69 @@ func TestSourceAnnotations_GitLab(t *testing.T) {
 	}
 }
 
+func TestSourceAnnotations_GitLabReporting(t *testing.T) {
+	ts := newTaskSpawner("spawner", "default", nil)
+	ts.Spec.When = kelos.When{
+		GitLabMergeRequests: &kelos.GitLabMergeRequests{
+			Reporting: &kelos.GitLabReporting{
+				Comments: &kelos.GitLabCommentsReporting{Mode: kelos.GitLabCommentModeSticky},
+			},
+		},
+	}
+
+	annotations := sourceAnnotations(ts, source.WorkItem{Kind: "MR", Number: 41})
+	if got := annotations[reporting.AnnotationGitLabReporting]; got != "enabled" {
+		t.Errorf("%s = %q, want enabled", reporting.AnnotationGitLabReporting, got)
+	}
+	if got := annotations[reporting.AnnotationGitLabCommentMode]; got != string(kelos.GitLabCommentModeSticky) {
+		t.Errorf("%s = %q, want Sticky", reporting.AnnotationGitLabCommentMode, got)
+	}
+	if _, ok := annotations[reporting.AnnotationGitHubReporting]; ok {
+		t.Error("GitHub reporting annotation must not be set for GitLab sources")
+	}
+}
+
+func TestGitLabReportingEnabledAndMode(t *testing.T) {
+	ts := newTaskSpawner("spawner", "default", nil)
+	ts.Spec.When = kelos.When{GitLabIssues: &kelos.GitLabIssues{}}
+	if gitlabReportingEnabled(ts) {
+		t.Error("gitlabReportingEnabled = true without reporting config")
+	}
+
+	ts.Spec.When.GitLabIssues.Reporting = &kelos.GitLabReporting{}
+	if gitlabReportingEnabled(ts) {
+		t.Error("gitlabReportingEnabled = true with empty reporting config")
+	}
+
+	ts.Spec.When.GitLabIssues.Reporting.Comments = &kelos.GitLabCommentsReporting{}
+	if !gitlabReportingEnabled(ts) {
+		t.Error("gitlabReportingEnabled = false with comments configured")
+	}
+	if got := resolvedGitLabCommentMode(ts); got != kelos.GitLabCommentModePerTask {
+		t.Errorf("resolvedGitLabCommentMode = %q, want PerTask default", got)
+	}
+	if got := gitlabReportingItemKind(ts); got != "issues" {
+		t.Errorf("gitlabReportingItemKind = %q, want issues", got)
+	}
+
+	ts.Spec.When = kelos.When{
+		GitLabMergeRequests: &kelos.GitLabMergeRequests{
+			Reporting: &kelos.GitLabReporting{
+				Comments: &kelos.GitLabCommentsReporting{Mode: kelos.GitLabCommentModeSticky},
+			},
+		},
+	}
+	if !gitlabReportingEnabled(ts) {
+		t.Error("gitlabReportingEnabled = false for merge request source with comments")
+	}
+	if got := resolvedGitLabCommentMode(ts); got != kelos.GitLabCommentModeSticky {
+		t.Errorf("resolvedGitLabCommentMode = %q, want Sticky", got)
+	}
+	if got := gitlabReportingItemKind(ts); got != "merge_requests" {
+		t.Errorf("gitlabReportingItemKind = %q, want merge_requests", got)
+	}
+}
+
 func TestBuildSource_GitHubIssuesWithBaseURL(t *testing.T) {
 	ts := newTaskSpawner("spawner", "default", nil)
 

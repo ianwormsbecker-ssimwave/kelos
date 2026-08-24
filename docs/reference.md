@@ -799,6 +799,7 @@ to receive refreshed credentials during long-running work.
 | `spec.when.gitlabIssues.author` | Filter by issue author username | No |
 | `spec.when.gitlabIssues.excludeAuthors` | Exclude issues created by any of these usernames (client-side) | No |
 | `spec.when.gitlabIssues.priorityLabels` | Priority-order labels for task selection when `maxConcurrency` is set; index 0 is highest priority | No |
+| `spec.when.gitlabIssues.reporting.comments.mode` | Enables status notes back to the GitLab issue. `PerTask` (default) creates one note for each Task; `Sticky` maintains one note per TaskSpawner and issue across Tasks | No |
 | `spec.when.gitlabIssues.pollInterval` | Per-source poll interval (e.g., `"30s"`, `"5m"`). Defaults to `5m` when omitted | No |
 | `spec.when.gitlabMergeRequests.repo` | Override the GitLab.com project to poll for merge requests (full project path or full URL); defaults to the workspace repo URL | No |
 | `spec.when.gitlabMergeRequests.labels` | Filter merge requests by labels (a merge request must have all listed labels) | No |
@@ -808,6 +809,7 @@ to receive refreshed credentials during long-running work.
 | `spec.when.gitlabMergeRequests.excludeAuthors` | Exclude merge requests opened by any of these usernames (client-side) | No |
 | `spec.when.gitlabMergeRequests.draft` | Filter by draft state | No |
 | `spec.when.gitlabMergeRequests.priorityLabels` | Priority-order labels for task selection when `maxConcurrency` is set; index 0 is highest priority | No |
+| `spec.when.gitlabMergeRequests.reporting.comments.mode` | Enables status notes back to the GitLab merge request. `PerTask` (default) creates one note for each Task; `Sticky` maintains one note per TaskSpawner and merge request across Tasks | No |
 | `spec.when.gitlabMergeRequests.pollInterval` | Per-source poll interval (e.g., `"30s"`, `"5m"`). Defaults to `5m` when omitted | No |
 | `spec.when.githubWebhook.events` | GitHub event types to listen for (e.g., `"issues"`, `"pull_request"`, `"push"`, `"issue_comment"`) | Yes (when using githubWebhook) |
 | `spec.when.githubWebhook.repository` | Restrict webhooks to a specific repository (`owner/repo` format); if empty, webhooks from any repository are accepted | No |

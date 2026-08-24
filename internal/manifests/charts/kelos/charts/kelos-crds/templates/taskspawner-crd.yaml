@@ -7854,6 +7854,27 @@ spec:
                           When empty, the project is derived from the workspace repo URL in
                           taskTemplate.workspaceRef.
                         type: string
+                      reporting:
+                        description: Reporting configures status reporting back to
+                          the originating GitLab issue.
+                        properties:
+                          comments:
+                            description: |-
+                              Comments configures task status notes on the originating GitLab issue
+                              or merge request. When nil, no notes are posted.
+                            properties:
+                              mode:
+                                default: PerTask
+                                description: |-
+                                  Mode controls whether notes are created per Task or reused across
+                                  Tasks from the same TaskSpawner and originating issue or merge request.
+                                  Defaults to PerTask.
+                                enum:
+                                - PerTask
+                                - Sticky
+                                type: string
+                            type: object
+                        type: object
                       state:
                         default: open
                         description: State filters issues by state (open, closed,
@@ -7921,6 +7942,28 @@ spec:
                           When empty, the project is derived from the workspace repo URL in
                           taskTemplate.workspaceRef.
                         type: string
+                      reporting:
+                        description: |-
+                          Reporting configures status reporting back to the originating GitLab
+                          merge request.
+                        properties:
+                          comments:
+                            description: |-
+                              Comments configures task status notes on the originating GitLab issue
+                              or merge request. When nil, no notes are posted.
+                            properties:
+                              mode:
+                                default: PerTask
+                                description: |-
+                                  Mode controls whether notes are created per Task or reused across
+                                  Tasks from the same TaskSpawner and originating issue or merge request.
+                                  Defaults to PerTask.
+                                enum:
+                                - PerTask
+                                - Sticky
+                                type: string
+                            type: object
+                        type: object
                       state:
                         default: open
                         description: |-
@@ -23343,6 +23386,27 @@ spec:
                           When empty, the project is derived from the workspace repo URL in
                           taskTemplate.workspaceRef.
                         type: string
+                      reporting:
+                        description: Reporting configures status reporting back to
+                          the originating GitLab issue.
+                        properties:
+                          comments:
+                            description: |-
+                              Comments configures task status notes on the originating GitLab issue
+                              or merge request. When nil, no notes are posted.
+                            properties:
+                              mode:
+                                default: PerTask
+                                description: |-
+                                  Mode controls whether notes are created per Task or reused across
+                                  Tasks from the same TaskSpawner and originating issue or merge request.
+                                  Defaults to PerTask.
+                                enum:
+                                - PerTask
+                                - Sticky
+                                type: string
+                            type: object
+                        type: object
                       state:
                         default: open
                         description: State filters issues by state (open, closed,
@@ -23410,6 +23474,28 @@ spec:
                           When empty, the project is derived from the workspace repo URL in
                           taskTemplate.workspaceRef.
                         type: string
+                      reporting:
+                        description: |-
+                          Reporting configures status reporting back to the originating GitLab
+                          merge request.
+                        properties:
+                          comments:
+                            description: |-
+                              Comments configures task status notes on the originating GitLab issue
+                              or merge request. When nil, no notes are posted.
+                            properties:
+                              mode:
+                                default: PerTask
+                                description: |-
+                                  Mode controls whether notes are created per Task or reused across
+                                  Tasks from the same TaskSpawner and originating issue or merge request.
+                                  Defaults to PerTask.
+                                enum:
+                                - PerTask
+                                - Sticky
+                                type: string
+                            type: object
+                        type: object
                       state:
                         default: open
                         description: |-
