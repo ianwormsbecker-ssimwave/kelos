@@ -287,6 +287,90 @@ spec:
 
 **Webhook-specific variables:** `{{.Event}}`, `{{.Action}}`, `{{.Sender}}`, `{{.Ref}}`, `{{.Repository}}`, `{{.Payload}}` (full payload access).
 
+### GitLab Webhooks
+
+React to GitLab webhook events in real time — merge requests, issues, notes (comments), pushes, and more. Unlike the polling-based GitLab Issues and Merge Requests sources, webhooks respond instantly to project events.
+
+#### Supported GitLab Event Types
+
+Event names match the webhook payload's `object_kind`:
+
+| Event Type | Description | Available Filter Fields | Template Variables |
+|---|---|---|---|
+| `issue` | Issue opened, closed, reopened, updated | `action`, `labels`, `excludeLabels`, `state`, `bodyPattern` | `{{.ID}}`, `{{.Title}}`, `{{.Number}}`, `{{.Body}}`, `{{.URL}}`, `{{.Labels}}` |
+| `merge_request` | MR opened, closed, reopened, updated, merged | `action`, `labels`, `excludeLabels`, `state`, `branch` (source branch), `draft`, `bodyPattern` | `{{.ID}}`, `{{.Title}}`, `{{.Number}}`, `{{.Body}}`, `{{.URL}}`, `{{.Labels}}`, `{{.Branch}}`, `{{.HeadSHA}}` |
+| `note` | Comment on an issue or merge request | `bodyPattern` (matched against the note text), `noteOn` (`"Issue"` or `"MergeRequest"`) | `{{.ID}}`, `{{.Title}}`, `{{.Number}}`, `{{.Body}}`, `{{.URL}}`, `{{.CommentBody}}`, `{{.Branch}}` (MR notes only) |
+| `push` | Push to a branch | `branch` | `{{.ID}}` (head commit SHA), `{{.Title}}`, `{{.Ref}}`, `{{.Branch}}`, `{{.HeadSHA}}` |
+| `tag_push` | Tag pushed | `tag` | `{{.ID}}`, `{{.Title}}`, `{{.Ref}}`, `{{.Tag}}` |
+| `pipeline` | Pipeline status changed | `state` (pipeline status), `branch` | `{{.Ref}}`, `{{.State}}`, `{{.Number}}` (associated MR, when present) |
+| `release` | Release created or updated | `action`, `tag` | `{{.ID}}`, `{{.Title}}`, `{{.Body}}`, `{{.Tag}}` |
+
+All event types support the `author` and `excludeAuthors` filter fields, and expose `{{.Event}}`, `{{.Action}}`, `{{.Sender}}`, `{{.Project}}` (full project path), and `{{.Payload}}` template variables.
+
+Events not in this list can still be specified in `events` — they are matched by `object_kind` with best-effort field extraction from the raw JSON payload.
+
+```yaml
+apiVersion: kelos.dev/v1alpha2
+kind: TaskSpawner
+metadata:
+  name: gitlab-webhook-responder
+spec:
+  when:
+    gitlabWebhook:
+      events:
+        - "merge_request"
+        - "note"
+      project: group/subgroup/project
+      excludeAuthors:
+        - "renovate-bot"
+      filters:
+        - event: "merge_request"
+          action: "open"
+          labels: ["needs-review"]
+        - event: "note"
+          noteOn: MergeRequest
+          bodyPattern: "^/kelos"
+      reporting:
+        comments:
+          mode: Sticky
+  taskTemplate:
+    type: claude-code
+    workspaceRef:
+      name: my-gitlab-workspace
+    credentials:
+      type: oauth
+      secretRef:
+        name: claude-oauth-token
+    promptTemplate: |
+      A {{.Event}} event ({{.Action}}) was triggered by @{{.Sender}} on {{.Project}}.
+
+      {{with index . "Title"}}Title: {{.}}{{end}}
+      {{with index . "URL"}}URL: {{.}}{{end}}
+
+      Please investigate and take appropriate action.
+    branch: "webhook-{{.Event}}-{{.ID}}"
+  maxConcurrency: 3
+```
+
+**Setup:** Enable the GitLab webhook server in the Helm values and point a GitLab project webhook at it:
+
+```yaml
+webhookServer:
+  sources:
+    gitlab:
+      enabled: true
+      secretName: gitlab-webhook          # Secret with a WEBHOOK_SECRET key
+      gitlabSecretName: gitlab-token      # optional: Secret with a GITLAB_TOKEN key, enables status notes
+```
+
+In the GitLab project, add a webhook (**Settings → Webhooks**) with the URL `https://<your-host>/webhook/gitlab`, select the trigger events, and set the **Secret token** to the same value as the `WEBHOOK_SECRET` key. GitLab does not sign webhook payloads — it sends this token verbatim in the `X-Gitlab-Token` header, and Kelos validates it with a constant-time comparison, so always use HTTPS for the webhook endpoint.
+
+**Filtering options:** `events` (required), `project`, `excludeAuthors`, and per-filter fields: `action`, `labels`, `excludeLabels`, `state`, `branch`, `tag`, `draft`, `author`, `excludeAuthors`, `bodyPattern` (Go re2 regular expression; matched against the note text for `note` events and the description otherwise), `noteOn` (scopes `note` events to `"Issue"` or `"MergeRequest"`).
+
+**Status reporting:** `reporting.comments` posts status notes back to the originating issue or merge request for events that carry one (`issue`, `merge_request`, and `note` events). Requires `gitlabSecretName` on the webhook server for the API token. Comment mode defaults to `PerTask`; `Sticky` maintains one note per TaskSpawner and originating item across Tasks. There is no GitLab equivalent of GitHub Check Runs.
+
+**Deduplication:** Deliveries are deduplicated by the `X-Gitlab-Event-UUID` header. GitLab may send separate deliveries for the same merge request as it changes; configure a deterministic `taskTemplate.nameTemplate` (e.g. including `{{.Number}}` and `{{.Project}}`) to reuse one Task per work item.
+
 ### Jira
 
 React to Jira issues. The spawner polls the Jira API (Cloud or Data Center/Server) using JQL.

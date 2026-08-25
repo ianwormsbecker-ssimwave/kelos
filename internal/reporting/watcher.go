@@ -40,6 +40,11 @@ const (
 	// from. Pairs with AnnotationSourceOwner.
 	AnnotationSourceRepo = "kelos.dev/source-repo"
 
+	// AnnotationSourceProject records the GitLab project path the event came
+	// from. The webhook reporter uses this so it can post notes on the
+	// originating project even when it differs from the Task's Workspace.
+	AnnotationSourceProject = "kelos.dev/source-project"
+
 	// AnnotationGitHubCommentID stores the GitHub comment ID for the status
 	// comment created by the reporter so subsequent updates edit the same
 	// comment.

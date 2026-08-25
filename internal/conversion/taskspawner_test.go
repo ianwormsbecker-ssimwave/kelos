@@ -320,6 +320,63 @@ func TestTaskSpawnerConvert_GitLabSourcesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTaskSpawnerConvert_GitLabWebhookRoundTrip(t *testing.T) {
+	draft := false
+	hub := &v1alpha2.TaskSpawner{
+		Spec: v1alpha2.TaskSpawnerSpec{
+			When: v1alpha2.When{
+				GitLabWebhook: &v1alpha2.GitLabWebhook{
+					Events:         []string{"merge_request", "note"},
+					Project:        "group/subgroup/project",
+					ExcludeAuthors: []string{"bot"},
+					Filters: []v1alpha2.GitLabWebhookFilter{
+						{
+							Event:       "note",
+							BodyPattern: `^/kelos\b`,
+							NoteOn:      v1alpha2.NoteOnMergeRequest,
+						},
+						{
+							Event:  "merge_request",
+							Action: "open",
+							Labels: []string{"needs-review"},
+							Branch: "release-*",
+							Draft:  &draft,
+						},
+					},
+					Reporting: &v1alpha2.GitLabReporting{
+						Comments: &v1alpha2.GitLabCommentsReporting{Mode: v1alpha2.GitLabCommentModeSticky},
+					},
+				},
+			},
+		},
+	}
+	down := &v1alpha1.TaskSpawner{}
+	if err := taskSpawnerFromHub(context.Background(), hub, down); err != nil {
+		t.Fatalf("taskSpawnerFromHub() error = %v", err)
+	}
+	if down.Spec.When.GitLabWebhook == nil {
+		t.Fatal("gitlabWebhook dropped on down-conversion")
+	}
+	back := &v1alpha2.TaskSpawner{}
+	if err := taskSpawnerToHub(context.Background(), down, back); err != nil {
+		t.Fatalf("taskSpawnerToHub() error = %v", err)
+	}
+	gl := back.Spec.When.GitLabWebhook
+	if gl == nil {
+		t.Fatal("gitlabWebhook dropped on round-trip")
+	}
+	if len(gl.Events) != 2 || gl.Project != "group/subgroup/project" || len(gl.ExcludeAuthors) != 1 {
+		t.Errorf("gitlabWebhook fields not preserved: %#v", gl)
+	}
+	if len(gl.Filters) != 2 || gl.Filters[0].NoteOn != v1alpha2.NoteOnMergeRequest ||
+		gl.Filters[1].Branch != "release-*" || gl.Filters[1].Draft == nil || *gl.Filters[1].Draft {
+		t.Errorf("gitlabWebhook filters not preserved: %#v", gl.Filters)
+	}
+	if gl.Reporting == nil || gl.Reporting.Comments == nil || gl.Reporting.Comments.Mode != v1alpha2.GitLabCommentModeSticky {
+		t.Errorf("gitlabWebhook reporting not preserved: %#v", gl.Reporting)
+	}
+}
+
 // TestTaskSpawnerConvert_CheckRunFilterFieldsDownConvert verifies that the
 // v1alpha2-only check_run filter fields (Conclusion, CheckName) convert down to
 // v1alpha1 without error. v1alpha1 has no equivalent fields, so they are dropped

@@ -408,6 +408,31 @@ func TestPrintTaskSpawnerTableGitLabSources(t *testing.T) {
 	}
 }
 
+func TestPrintTaskSpawnerTableGitLabWebhook(t *testing.T) {
+	spawners := []kelos.TaskSpawner{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "gitlab-webhook-spawner",
+				CreationTimestamp: metav1.NewTime(time.Now().Add(-1 * time.Hour)),
+			},
+			Spec: kelos.TaskSpawnerSpec{
+				When: kelos.When{GitLabWebhook: &kelos.GitLabWebhook{
+					Events:  []string{"merge_request"},
+					Project: "group/project",
+				}},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	printTaskSpawnerTable(&buf, spawners, false)
+	output := buf.String()
+
+	if !strings.Contains(output, "GitLab Webhook (group/project)") {
+		t.Errorf("expected 'GitLab Webhook (group/project)' as source in output, got %q", output)
+	}
+}
+
 func TestPrintTaskSpawnerDetailGitLabMergeRequests(t *testing.T) {
 	spawner := &kelos.TaskSpawner{
 		ObjectMeta: metav1.ObjectMeta{

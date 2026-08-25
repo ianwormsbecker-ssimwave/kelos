@@ -3,6 +3,7 @@ package webhook
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -22,6 +23,22 @@ func ValidateGitHubSignature(payload []byte, signature string, secret []byte) er
 
 	expectedSig := signature[7:] // Remove "sha256=" prefix
 	return validateHMACSignature(payload, expectedSig, secret)
+}
+
+// ValidateGitLabToken validates a GitLab webhook token. GitLab does not sign
+// webhook payloads; it sends the configured secret token verbatim in the
+// X-Gitlab-Token header, so validation is a constant-time comparison of the
+// header value against the shared secret.
+func ValidateGitLabToken(token string, secret []byte) error {
+	if token == "" {
+		return fmt.Errorf("missing token")
+	}
+
+	if subtle.ConstantTimeCompare([]byte(token), secret) != 1 {
+		return fmt.Errorf("token verification failed")
+	}
+
+	return nil
 }
 
 // ValidateLinearSignature validates a Linear webhook signature.

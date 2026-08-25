@@ -811,6 +811,22 @@ to receive refreshed credentials during long-running work.
 | `spec.when.gitlabMergeRequests.priorityLabels` | Priority-order labels for task selection when `maxConcurrency` is set; index 0 is highest priority | No |
 | `spec.when.gitlabMergeRequests.reporting.comments.mode` | Enables status notes back to the GitLab merge request. `PerTask` (default) creates one note for each Task; `Sticky` maintains one note per TaskSpawner and merge request across Tasks | No |
 | `spec.when.gitlabMergeRequests.pollInterval` | Per-source poll interval (e.g., `"30s"`, `"5m"`). Defaults to `5m` when omitted | No |
+| `spec.when.gitlabWebhook.events` | GitLab event types to listen for, matching the payload's `object_kind` (e.g., `"merge_request"`, `"issue"`, `"note"`, `"push"`) | Yes (when using gitlabWebhook) |
+| `spec.when.gitlabWebhook.project` | Restrict webhooks to a specific project (full path like `group/subgroup/project`); if empty, webhooks from any project are accepted | No |
+| `spec.when.gitlabWebhook.excludeAuthors` | Exclude webhook events triggered by any of these usernames; applied before filter evaluation | No |
+| `spec.when.gitlabWebhook.filters[].event` | GitLab event type this filter applies to | Yes (per filter) |
+| `spec.when.gitlabWebhook.filters[].action` | Filter by the event's action (e.g., `"open"`, `"close"`, `"reopen"`, `"update"`, `"merge"`) | No |
+| `spec.when.gitlabWebhook.filters[].labels` | Require the issue/MR to have all of these labels | No |
+| `spec.when.gitlabWebhook.filters[].excludeLabels` | Exclude issues/MRs with any of these labels | No |
+| `spec.when.gitlabWebhook.filters[].state` | Filter by issue/MR state (`"opened"`, `"closed"`, `"merged"`) | No |
+| `spec.when.gitlabWebhook.filters[].branch` | Filter push events by branch and merge_request events by source branch (exact match or glob) | No |
+| `spec.when.gitlabWebhook.filters[].tag` | Filter tag_push and release events by tag name (exact match or glob) | No |
+| `spec.when.gitlabWebhook.filters[].draft` | Filter merge requests by draft status | No |
+| `spec.when.gitlabWebhook.filters[].author` | Filter by the username of the user who triggered the event | No |
+| `spec.when.gitlabWebhook.filters[].excludeAuthors` | Exclude events triggered by any of these usernames | No |
+| `spec.when.gitlabWebhook.filters[].bodyPattern` | Go re2 regular expression matched against the note text for `note` events, or the issue/MR description otherwise | No |
+| `spec.when.gitlabWebhook.filters[].noteOn` | Scope `note`-event filters to notes on `"Issue"` or `"MergeRequest"`; omit to match both | No |
+| `spec.when.gitlabWebhook.reporting.comments.mode` | Enables status notes back to the originating GitLab issue or merge request. `PerTask` (default) creates one note for each Task; `Sticky` maintains one note per TaskSpawner and item across Tasks. Requires a GitLab token on the webhook server (`webhookServer.sources.gitlab.gitlabSecretName`) | No |
 | `spec.when.githubWebhook.events` | GitHub event types to listen for (e.g., `"issues"`, `"pull_request"`, `"push"`, `"issue_comment"`) | Yes (when using githubWebhook) |
 | `spec.when.githubWebhook.repository` | Restrict webhooks to a specific repository (`owner/repo` format); if empty, webhooks from any repository are accepted | No |
 | `spec.when.githubWebhook.excludeAuthors` | Exclude webhook events sent by any of these usernames; applied before filter evaluation | No |
@@ -1032,6 +1048,8 @@ The `promptTemplate` field uses Go `text/template` syntax. Available variables d
 | `{{.Schedule}}` | Cron schedule expression | Empty | Empty | Empty | Empty | Empty | Empty | Schedule string (e.g., `"0 * * * *"`) |
 
 GitLab issue and merge request sources (`gitlabIssues`, `gitlabMergeRequests`) expose the same core variables: `{{.ID}}` and `{{.Number}}` carry the project-scoped IID, plus `{{.Title}}`, `{{.Body}}`, `{{.URL}}`, `{{.Labels}}`, and `{{.Comments}}` (non-system notes). `{{.Kind}}` is `"Issue"` for issues and `"MR"` for merge requests; merge requests additionally expose `{{.Branch}}` (source branch).
+
+GitLab webhook sources (`gitlabWebhook`) expose `{{.Event}}` (the payload's `object_kind`), `{{.Action}}`, `{{.Sender}}`, `{{.Project}}` (full project path), and `{{.Payload}}` (full parsed payload) on every event. Issue and merge request events (and notes on them) also expose `{{.Number}}` (IID), `{{.Title}}`, `{{.Body}}`, `{{.URL}}`, and `{{.Labels}}`; merge requests add `{{.Branch}}` (source branch) and `{{.HeadSHA}}`; `note` events add `{{.CommentBody}}` (the note text); push and tag_push events expose `{{.Ref}}`, `{{.Branch}}` or `{{.Tag}}`, and `{{.HeadSHA}}`. See the [GitLab Webhooks event table](integration.md#supported-gitlab-event-types) for the per-event breakdown.
 
 > **Generic Webhook only:** any additional keys declared in `spec.when.webhook.fieldMapping` are also exposed as top-level template variables (e.g., `fieldMapping: {severity: "$.level"}` makes `{{.severity}}` available).
 

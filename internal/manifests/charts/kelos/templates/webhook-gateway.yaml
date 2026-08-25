@@ -1,8 +1,9 @@
 {{- if .Values.webhookServer.gateway.enabled }}
 {{- $githubEnabled := .Values.webhookServer.sources.github.enabled }}
+{{- $gitlabEnabled := .Values.webhookServer.sources.gitlab.enabled }}
 {{- $linearEnabled := .Values.webhookServer.sources.linear.enabled }}
 {{- $genericEnabled := .Values.webhookServer.sources.generic.enabled }}
-{{- if or $githubEnabled $linearEnabled $genericEnabled }}
+{{- if or $githubEnabled $gitlabEnabled $linearEnabled $genericEnabled }}
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -72,6 +73,15 @@ spec:
             value: /webhook/github
       backendRefs:
         - name: kelos-webhook-github
+          port: 8443
+    {{- end }}
+    {{- if $gitlabEnabled }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /webhook/gitlab
+      backendRefs:
+        - name: kelos-webhook-gitlab
           port: 8443
     {{- end }}
     {{- if $linearEnabled }}

@@ -883,6 +883,10 @@ func newUninstallCommand(cfg *ClientConfig) *cobra.Command {
 							"enabled":    true,
 							"secretName": "kelos-uninstall-placeholder",
 						},
+						"gitlab": map[string]interface{}{
+							"enabled":    true,
+							"secretName": "kelos-uninstall-placeholder",
+						},
 						"linear": map[string]interface{}{
 							"enabled":    true,
 							"secretName": "kelos-uninstall-placeholder",

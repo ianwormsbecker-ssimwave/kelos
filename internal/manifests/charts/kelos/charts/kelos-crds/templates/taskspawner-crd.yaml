@@ -7976,6 +7976,136 @@ spec:
                         - all
                         type: string
                     type: object
+                  gitlabWebhook:
+                    description: GitLabWebhook triggers task spawning on GitLab webhook
+                      events.
+                    properties:
+                      events:
+                        description: |-
+                          Events is the list of GitLab event types to listen for, matching the
+                          webhook payload's object_kind: e.g. "push", "tag_push", "issue",
+                          "merge_request", "note", "pipeline", "release".
+                        items:
+                          type: string
+                        maxItems: 20
+                        minItems: 1
+                        type: array
+                      excludeAuthors:
+                        description: |-
+                          ExcludeAuthors excludes webhook events triggered by any of these
+                          usernames. This is applied before filter evaluation and takes
+                          precedence over filter-level Author matches.
+                        items:
+                          type: string
+                        type: array
+                      filters:
+                        description: |-
+                          Filters refine which events match. If multiple filters apply to the
+                          same event type, any matching filter accepts the event (OR semantics).
+                          If empty, all events in the Events list match.
+                        items:
+                          description: GitLabWebhookFilter refines which GitLab webhook
+                            events match.
+                          properties:
+                            action:
+                              description: |-
+                                Action filters by the event's action (e.g. "open", "close", "reopen",
+                                "update", "merge" for issue and merge_request events; "create" for
+                                release events).
+                              type: string
+                            author:
+                              description: Author filters by the username of the user
+                                who triggered the event.
+                              type: string
+                            bodyPattern:
+                              description: |-
+                                BodyPattern is a regular expression matched against the note body for
+                                note events, and against the issue or merge request description for
+                                issue and merge_request events.
+                              type: string
+                            branch:
+                              description: |-
+                                Branch filters push events by branch name and merge_request events by
+                                source branch (exact match or glob, e.g. "main", "release-*").
+                              type: string
+                            draft:
+                              description: Draft filters merge requests by draft status.
+                              type: boolean
+                            event:
+                              description: Event is the GitLab event type this filter
+                                applies to (object_kind).
+                              type: string
+                            excludeAuthors:
+                              description: ExcludeAuthors excludes events triggered
+                                by any of these usernames.
+                              items:
+                                type: string
+                              type: array
+                            excludeLabels:
+                              description: ExcludeLabels excludes issues/merge requests
+                                with any of these labels.
+                              items:
+                                type: string
+                              type: array
+                            labels:
+                              description: Labels requires the issue or merge request
+                                to have all of these labels.
+                              items:
+                                type: string
+                              type: array
+                            noteOn:
+                              description: |-
+                                NoteOn scopes note-event filters to notes on a specific subject:
+                                "Issue" or "MergeRequest". Omit to match notes on both.
+                              enum:
+                              - Issue
+                              - MergeRequest
+                              type: string
+                            state:
+                              description: |-
+                                State filters by the issue or merge request state ("opened", "closed",
+                                "merged").
+                              type: string
+                            tag:
+                              description: |-
+                                Tag filters tag_push and release events by tag name (exact match or
+                                glob, e.g. "v*").
+                              type: string
+                          required:
+                          - event
+                          type: object
+                        type: array
+                      project:
+                        description: |-
+                          Project restricts webhooks to a specific project (full path, e.g.
+                          "group/subgroup/project"). If empty, webhooks from any project are
+                          accepted.
+                        type: string
+                      reporting:
+                        description: |-
+                          Reporting configures status reporting back to the originating GitLab
+                          issue or merge request.
+                        properties:
+                          comments:
+                            description: |-
+                              Comments configures task status notes on the originating GitLab issue
+                              or merge request. When nil, no notes are posted.
+                            properties:
+                              mode:
+                                default: PerTask
+                                description: |-
+                                  Mode controls whether notes are created per Task or reused across
+                                  Tasks from the same TaskSpawner and originating issue or merge request.
+                                  Defaults to PerTask.
+                                enum:
+                                - PerTask
+                                - Sticky
+                                type: string
+                            type: object
+                        type: object
+                    required:
+                    - events
+                    type: object
                   jira:
                     description: Jira discovers issues from a Jira project.
                     properties:
@@ -8471,6 +8601,7 @@ spec:
                       GitHub issue/Jira sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}
                       GitHub pull request sources additionally expose: {{ "{{.Branch}}" }}, {{ "{{.ReviewState}}" }}, {{ "{{.ReviewComments}}" }}
                       GitLab issue and merge request sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}; merge requests additionally expose {{ "{{.Branch}}" }}
+                      GitLab webhook sources: {{ "{{.Event}}" }}, {{ "{{.Action}}" }}, {{ "{{.Sender}}" }}, {{ "{{.Project}}" }}, {{ "{{.Payload}}" }} (full payload access); issue and merge request events also expose {{ "{{.Number}}" }}, {{ "{{.Title}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }} (plus {{ "{{.Branch}}" }} for merge requests and {{ "{{.CommentBody}}" }} for notes)
                       GitHub webhook sources: {{ "{{.Event}}" }}, {{ "{{.Action}}" }}, {{ "{{.Sender}}" }}, {{ "{{.Ref}}" }}, {{ "{{.Repository}}" }}, {{ "{{.Payload}}" }} (full payload access); issue and pull request events also expose {{ "{{.Number}}" }}, {{ "{{.Title}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }} (plus {{ "{{.Branch}}" }} for pull requests)
                       Linear webhook sources: {{ "{{.Type}}" }}, {{ "{{.Action}}" }}, {{ "{{.State}}" }}, {{ "{{.Labels}}" }}, {{ "{{.IssueID}}" }}, {{ "{{.Payload}}" }}
                       Cron sources: {{ "{{.Time}}" }}, {{ "{{.Schedule}}" }}
@@ -8773,6 +8904,7 @@ spec:
                       GitHub issue/Jira sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}
                       GitHub pull request sources additionally expose: {{ "{{.Branch}}" }}, {{ "{{.ReviewState}}" }}, {{ "{{.ReviewComments}}" }}
                       GitLab issue and merge request sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}; merge requests additionally expose {{ "{{.Branch}}" }}
+                      GitLab webhook sources: {{ "{{.Event}}" }}, {{ "{{.Action}}" }}, {{ "{{.Sender}}" }}, {{ "{{.Project}}" }}, {{ "{{.Payload}}" }} (full payload access); issue and merge request events also expose {{ "{{.Number}}" }}, {{ "{{.Title}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }} (plus {{ "{{.Branch}}" }} for merge requests and {{ "{{.CommentBody}}" }} for notes)
                       GitHub webhook sources: {{ "{{.Event}}" }}, {{ "{{.Action}}" }}, {{ "{{.Sender}}" }}, {{ "{{.Ref}}" }}, {{ "{{.Repository}}" }}, {{ "{{.Payload}}" }} (full payload access); issue and pull request events also expose {{ "{{.Number}}" }}, {{ "{{.Title}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }} (plus {{ "{{.Branch}}" }} for pull requests)
                       Linear webhook sources: {{ "{{.Type}}" }}, {{ "{{.Action}}" }}, {{ "{{.State}}" }}, {{ "{{.Labels}}" }}, {{ "{{.IssueID}}" }}, {{ "{{.Payload}}" }}
                       Cron sources: {{ "{{.Time}}" }}, {{ "{{.Schedule}}" }}
@@ -15706,6 +15838,7 @@ spec:
                       GitHub issue/Jira sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}
                       GitHub pull request sources additionally expose: {{ "{{.Branch}}" }}, {{ "{{.ReviewState}}" }}, {{ "{{.ReviewComments}}" }}
                       GitLab issue and merge request sources: {{ "{{.Number}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }}, {{ "{{.Comments}}" }}; merge requests additionally expose {{ "{{.Branch}}" }}
+                      GitLab webhook sources: {{ "{{.Event}}" }}, {{ "{{.Action}}" }}, {{ "{{.Sender}}" }}, {{ "{{.Project}}" }}, {{ "{{.Payload}}" }} (full payload access); issue and merge request events also expose {{ "{{.Number}}" }}, {{ "{{.Title}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }}, {{ "{{.Labels}}" }} (plus {{ "{{.Branch}}" }} for merge requests and {{ "{{.CommentBody}}" }} for notes)
                       GitHub webhook sources: {{ "{{.Event}}" }}, {{ "{{.Action}}" }}, {{ "{{.Sender}}" }}, {{ "{{.Ref}}" }}, {{ "{{.Repository}}" }}, {{ "{{.Payload}}" }} (full payload access); issue and pull request events also expose {{ "{{.Number}}" }}, {{ "{{.Title}}" }}, {{ "{{.Body}}" }}, {{ "{{.URL}}" }} (plus {{ "{{.Branch}}" }} for pull requests)
                       Linear webhook sources: {{ "{{.Type}}" }}, {{ "{{.Action}}" }}, {{ "{{.State}}" }}, {{ "{{.Labels}}" }}, {{ "{{.IssueID}}" }}, {{ "{{.Payload}}" }}
                       Cron sources: {{ "{{.Time}}" }}, {{ "{{.Schedule}}" }}
@@ -23508,6 +23641,136 @@ spec:
                         - all
                         type: string
                     type: object
+                  gitlabWebhook:
+                    description: GitLabWebhook triggers task spawning on GitLab webhook
+                      events.
+                    properties:
+                      events:
+                        description: |-
+                          Events is the list of GitLab event types to listen for, matching the
+                          webhook payload's object_kind: e.g. "push", "tag_push", "issue",
+                          "merge_request", "note", "pipeline", "release".
+                        items:
+                          type: string
+                        maxItems: 20
+                        minItems: 1
+                        type: array
+                      excludeAuthors:
+                        description: |-
+                          ExcludeAuthors excludes webhook events triggered by any of these
+                          usernames. This is applied before filter evaluation and takes
+                          precedence over filter-level Author matches.
+                        items:
+                          type: string
+                        type: array
+                      filters:
+                        description: |-
+                          Filters refine which events match. If multiple filters apply to the
+                          same event type, any matching filter accepts the event (OR semantics).
+                          If empty, all events in the Events list match.
+                        items:
+                          description: GitLabWebhookFilter refines which GitLab webhook
+                            events match.
+                          properties:
+                            action:
+                              description: |-
+                                Action filters by the event's action (e.g. "open", "close", "reopen",
+                                "update", "merge" for issue and merge_request events; "create" for
+                                release events).
+                              type: string
+                            author:
+                              description: Author filters by the username of the user
+                                who triggered the event.
+                              type: string
+                            bodyPattern:
+                              description: |-
+                                BodyPattern is a regular expression matched against the note body for
+                                note events, and against the issue or merge request description for
+                                issue and merge_request events.
+                              type: string
+                            branch:
+                              description: |-
+                                Branch filters push events by branch name and merge_request events by
+                                source branch (exact match or glob, e.g. "main", "release-*").
+                              type: string
+                            draft:
+                              description: Draft filters merge requests by draft status.
+                              type: boolean
+                            event:
+                              description: Event is the GitLab event type this filter
+                                applies to (object_kind).
+                              type: string
+                            excludeAuthors:
+                              description: ExcludeAuthors excludes events triggered
+                                by any of these usernames.
+                              items:
+                                type: string
+                              type: array
+                            excludeLabels:
+                              description: ExcludeLabels excludes issues/merge requests
+                                with any of these labels.
+                              items:
+                                type: string
+                              type: array
+                            labels:
+                              description: Labels requires the issue or merge request
+                                to have all of these labels.
+                              items:
+                                type: string
+                              type: array
+                            noteOn:
+                              description: |-
+                                NoteOn scopes note-event filters to notes on a specific subject:
+                                "Issue" or "MergeRequest". Omit to match notes on both.
+                              enum:
+                              - Issue
+                              - MergeRequest
+                              type: string
+                            state:
+                              description: |-
+                                State filters by the issue or merge request state ("opened", "closed",
+                                "merged").
+                              type: string
+                            tag:
+                              description: |-
+                                Tag filters tag_push and release events by tag name (exact match or
+                                glob, e.g. "v*").
+                              type: string
+                          required:
+                          - event
+                          type: object
+                        type: array
+                      project:
+                        description: |-
+                          Project restricts webhooks to a specific project (full path, e.g.
+                          "group/subgroup/project"). If empty, webhooks from any project are
+                          accepted.
+                        type: string
+                      reporting:
+                        description: |-
+                          Reporting configures status reporting back to the originating GitLab
+                          issue or merge request.
+                        properties:
+                          comments:
+                            description: |-
+                              Comments configures task status notes on the originating GitLab issue
+                              or merge request. When nil, no notes are posted.
+                            properties:
+                              mode:
+                                default: PerTask
+                                description: |-
+                                  Mode controls whether notes are created per Task or reused across
+                                  Tasks from the same TaskSpawner and originating issue or merge request.
+                                  Defaults to PerTask.
+                                enum:
+                                - PerTask
+                                - Sticky
+                                type: string
+                            type: object
+                        type: object
+                    required:
+                    - events
+                    type: object
                   jira:
                     description: Jira discovers issues from a Jira project.
                     properties:
@@ -23781,15 +24044,16 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: a workspace source is required when using githubIssues, githubPullRequests,
-                gitlabIssues, gitlabMergeRequests, githubWebhook, or linearWebhook
-                source (set taskTemplate.workspaceRef, taskTemplate.worker.workspaceRef,
+                gitlabIssues, gitlabMergeRequests, gitlabWebhook, githubWebhook, or
+                linearWebhook source (set taskTemplate.workspaceRef, taskTemplate.worker.workspaceRef,
                 or taskTemplate.workerPoolRef — a pool satisfies this because it carries
                 its own workspace)
               rule: '!(has(self.when.githubIssues) || has(self.when.githubPullRequests)
                 || has(self.when.gitlabIssues) || has(self.when.gitlabMergeRequests)
-                || has(self.when.githubWebhook) || has(self.when.linearWebhook)) ||
-                has(self.taskTemplate.workspaceRef) || (has(self.taskTemplate.worker)
-                && has(self.taskTemplate.worker.workspaceRef)) || has(self.taskTemplate.workerPoolRef)'
+                || has(self.when.gitlabWebhook) || has(self.when.githubWebhook) ||
+                has(self.when.linearWebhook)) || has(self.taskTemplate.workspaceRef)
+                || (has(self.taskTemplate.worker) && has(self.taskTemplate.worker.workspaceRef))
+                || has(self.taskTemplate.workerPoolRef)'
             - message: inline task templates require taskTemplate credentials or spec.credentials
               rule: has(self.taskTemplate.workerPoolRef) || (has(self.taskTemplate.worker)
                 && (has(self.taskTemplate.worker.credentials) || has(self.credentials)))

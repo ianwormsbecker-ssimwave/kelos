@@ -1,8 +1,9 @@
 {{- if .Values.webhookServer.ingress.enabled }}
 {{- $githubEnabled := .Values.webhookServer.sources.github.enabled }}
+{{- $gitlabEnabled := .Values.webhookServer.sources.gitlab.enabled }}
 {{- $linearEnabled := .Values.webhookServer.sources.linear.enabled }}
 {{- $genericEnabled := .Values.webhookServer.sources.generic.enabled }}
-{{- if or $githubEnabled $linearEnabled $genericEnabled }}
+{{- if or $githubEnabled $gitlabEnabled $linearEnabled $genericEnabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -38,6 +39,15 @@ spec:
             backend:
               service:
                 name: kelos-webhook-github
+                port:
+                  number: 8443
+          {{- end }}
+          {{- if $gitlabEnabled }}
+          - path: /webhook/gitlab
+            pathType: Prefix
+            backend:
+              service:
+                name: kelos-webhook-gitlab
                 port:
                   number: 8443
           {{- end }}
